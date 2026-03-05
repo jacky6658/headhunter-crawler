@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════
+# HeadHunter Crawler - Git Ignore
+# ═══════════════════════════════════════════
+
+# ── 執行資料（每台電腦不同，自動產生） ──
+data/
+logs/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+.env
+
+# ── 系統 ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ── IDE ──
+.vscode/
+.idea/
+*.iml
+
+# ── 測試 ──
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Claude ──
+.claude/
+
+# ── 注意 ──
+# credentials.json 和 config/default.yaml 含 API Key
+# 目前為內部共用所以納入版控
+# 若改為公開倉庫，請取消以下註解：
+# credentials.json
+# *.pem
+# *.key

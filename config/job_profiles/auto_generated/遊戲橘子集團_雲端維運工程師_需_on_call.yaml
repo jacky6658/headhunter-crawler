@@ -1,0 +1,21 @@
+job_profile:
+  role_family: engineering
+  role_name: '雲端維運工程師
+
+    (需 on-call)'
+  must_have:
+  - skill: 雲端維運
+    weight: 8
+  - skill: 'on'
+    weight: 7
+  core:
+  - skill: call
+    weight: 6
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

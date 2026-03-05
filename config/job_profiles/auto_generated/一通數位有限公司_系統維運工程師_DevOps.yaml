@@ -1,0 +1,24 @@
+job_profile:
+  role_family: engineering
+  role_name: 系統維運工程師 (DevOps)
+  must_have:
+  - skill: devops
+    weight: 8
+  - skill: sre
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: kubernetes
+    weight: 4
+  - skill: ci/cd
+    weight: 3
+  - skill: grafana
+    weight: 2
+  - skill: prometheus
+    weight: 2
+  - skill: terraform
+    weight: 2
+  - skill: aliyun
+    weight: 2
+  context: []
+  constraints: {}

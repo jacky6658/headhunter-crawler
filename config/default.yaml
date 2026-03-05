@@ -1,0 +1,126 @@
+anti_detect:
+  backoff:
+    initial: 2.0
+    max_wait: 120.0
+    multiplier: 2.0
+  candidate_delay:
+    max: 20.0
+    min: 10.0
+  github_delay:
+    max: 0.8
+    min: 0.3
+  page_delay:
+    max: 6.0
+    min: 3.0
+  proxy:
+    enabled: false
+  request_delay:
+    max: 5
+    min: 2
+  ssl_verify: true
+api_keys:
+  brave_api_key: BSAGYPKNGT7tKInGsjI9EQxO9AkHBls
+  github_tokens:
+  - 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
+captcha:
+  indicators:
+  - g-recaptcha
+  - recaptcha
+  - unusual traffic
+  - Just a moment
+  - Cloudflare
+  - /sorry/index
+  - sitekey
+  - detected unusual
+  - verify you are human
+  - hcaptcha
+crawler:
+  browser_pool_size: 3
+  default_location: Taiwan
+  default_location_zh: 台灣
+  github:
+    languages:
+    - python
+    - java
+    - javascript
+    - typescript
+    - go
+    - golang
+    - rust
+    - c
+    - c++
+    - c#
+    - ruby
+    - php
+    - swift
+    - kotlin
+    - scala
+    - r
+    - dart
+    - elixir
+    - haskell
+    - perl
+    - lua
+    - shell
+    - bash
+    - powershell
+    - html
+    - css
+    - vue
+    - react
+    - solidity
+    - assembly
+    - matlab
+    - julia
+    - groovy
+    - clojure
+    - erlang
+    - zig
+    - nim
+    - ocaml
+    - f#
+    - crystal
+    - v
+    - objective-c
+    - coffeescript
+    - elm
+    - purescript
+    - fortran
+    - cobol
+    - wasm
+    max_workers: 4
+  headless: true
+  linkedin:
+    enable_bing: true
+    enable_brave: true
+    enable_google: true
+    enable_playwright: true
+    min_results_threshold: 3
+  max_pages: 10
+  ocr_enabled: true
+  sample_per_page: 5
+dedup:
+  cache_file: data/dedup_cache.json
+google_sheets:
+  batch_size: 50
+  credentials_file: credentials.json
+  processed_sheet_name: 去重
+  spreadsheet_id: 15X2NNK9bSmSl-GfCmfO2q8lS2wAinR9fNMZr4vqrMug
+logging:
+  backup_count: 5
+  file: logs/crawler.log
+  level: INFO
+  max_bytes: 10485760
+scheduler:
+  tasks_file: data/tasks.json
+server:
+  debug: false
+  host: 0.0.0.0
+  port: 5000
+step1ne:
+  api_base_url: http://localhost:3001
+  auto_push: false
+timeouts:
+  http_get: 15
+  page_load: 30000
+  profile_read: 25000

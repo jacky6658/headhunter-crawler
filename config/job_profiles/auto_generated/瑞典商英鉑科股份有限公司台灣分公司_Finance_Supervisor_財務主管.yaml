@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Finance Supervisor (財務主管)
+  must_have:
+  - skill: finance supervisor
+    weight: 8
+  - skill: 財務主管
+    weight: 7
+  core:
+  - skill: 會計主管
+    weight: 6
+  nice_to_have:
+  - skill: 稅務規劃
+    weight: 4
+  - skill: 會計作業
+    weight: 3
+  - skill: excel
+    weight: 2
+  - skill: 財務報表
+    weight: 2
+  - skill: cpa
+    weight: 2
+  - skill: 記帳士
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

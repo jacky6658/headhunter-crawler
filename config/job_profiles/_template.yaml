@@ -1,0 +1,33 @@
+# 職缺評分模板 — Job Profile Template
+# 複製此檔案為 {client}_{job_title}.yaml 並修改
+
+job_profile:
+  role_family: "engineering"          # engineering / non-engineering
+  role_name: "Backend Engineer"       # 職缺名稱
+
+  # 必備技能 — 缺一項大扣分 (must_have penalty: score × 0.7 per missing)
+  must_have:
+    - { skill: "java", weight: 8 }
+    - { skill: "spring", weight: 7 }
+
+  # 核心技能 — 主要排序依據
+  core:
+    - { skill: "mysql", weight: 6 }
+    - { skill: "redis", weight: 5 }
+    - { skill: "docker", weight: 5 }
+
+  # 加分技能 — 拉開差距
+  nice_to_have:
+    - { skill: "kubernetes", weight: 3 }
+    - { skill: "kafka", weight: 3 }
+    - { skill: "microservices", weight: 2 }
+
+  # 產業/場景加分
+  context:
+    - { tag: "fintech", weight: 3 }
+    - { tag: "high-availability", weight: 2 }
+
+  # 限制條件（不符合標記但不淘汰）
+  constraints:
+    location: ["taipei", "taiwan", "remote"]
+    seniority_min_years: 2

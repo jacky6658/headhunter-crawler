@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}Results - HeadHunter Crawler{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Results</h1>
+    <div class="flex gap-2">
+        <button onclick="rescoreAll()" class="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-purple-700">重新評分</button>
+        <button onclick="pushSelected()" class="bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700">推送到系統</button>
+        <button onclick="exportSelected()" class="bg-gray-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-700">匯出 JSON</button>
+    </div>
+</div>
+
+<!-- 篩選列 -->
+<div class="flex flex-wrap gap-3 mb-4">
+    <select id="f-client" class="border rounded-lg px-3 py-2 text-sm" onchange="loadResults()">
+        <option value="">客戶: 全部</option>
+    </select>
+    <select id="f-source" class="border rounded-lg px-3 py-2 text-sm" onchange="loadResults()">
+        <option value="">來源: 全部</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="github">GitHub</option>
+        <option value="li+ocr">LI+OCR</option>
+    </select>
+    <select id="f-grade" class="border rounded-lg px-3 py-2 text-sm" onchange="loadResults()">
+        <option value="">評分: 全部</option>
+        <option value="A">A 強推薦 (≥80)</option>
+        <option value="B">B 推薦 (≥60)</option>
+        <option value="C">C 待評估 (≥40)</option>
+        <option value="D">D 不推薦 (<40)</option>
+    </select>
+    <select id="f-status" class="border rounded-lg px-3 py-2 text-sm" onchange="loadResults()">
+        <option value="">狀態: 全部</option>
+        <option value="new">new</option>
+        <option value="imported">imported</option>
+        <option value="reviewed">reviewed</option>
+    </select>
+    <input id="f-search" type="text" placeholder="搜尋名稱/技能..." class="border rounded-lg px-3 py-2 text-sm w-48" onkeyup="debounceSearch()">
+    <select id="f-sort" class="border rounded-lg px-3 py-2 text-sm" onchange="loadResults()">
+        <option value="score">排序: 評分高→低</option>
+        <option value="name">排序: 名稱 A→Z</option>
+        <option value="date">排序: 日期新→舊</option>
+    </select>
+</div>
+
+<!-- 結果統計 -->
+<div class="text-sm text-gray-500 mb-2 flex items-center gap-4">
+    <span>顯示 <span id="result-count">0</span> 筆結果</span>
+    <span id="grade-stats" class="flex gap-2"></span>
+    <label class="ml-auto"><input type="checkbox" id="select-all" onchange="toggleSelectAll()"> 全選</label>
+</div>
+
+<!-- 結果表格 -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-3 py-3 w-8"></th>
+                <th class="px-3 py-3 text-left text-gray-500">名稱</th>
+                <th class="px-3 py-3 text-left text-gray-500">評分</th>
+                <th class="px-3 py-3 text-left text-gray-500">來源</th>
+                <th class="px-3 py-3 text-left text-gray-500">連結</th>
+                <th class="px-3 py-3 text-left text-gray-500">公司</th>
+                <th class="px-3 py-3 text-left text-gray-500">地區</th>
+                <th class="px-3 py-3 text-left text-gray-500">技能</th>
+                <th class="px-3 py-3 text-left text-gray-500">職缺</th>
+            </tr>
+        </thead>
+        <tbody id="results-body" class="divide-y">
+            <tr><td colspan="9" class="px-4 py-8 text-gray-400 text-center">載入中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 分頁 -->
+<div class="flex items-center justify-between mt-4">
+    <div class="text-sm text-gray-500">
+        每頁 <select id="page-size" class="border rounded px-2 py-1 text-sm" onchange="loadResults()">
+            <option>25</option><option selected>50</option><option>100</option>
+        </select> 筆
+    </div>
+    <div id="pagination" class="flex gap-1"></div>
+</div>
+
+<!-- 候選人詳情 Modal -->
+<div id="detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+        <div class="px-6 py-4 border-b flex justify-between items-center">
+            <h2 id="detail-name" class="text-lg font-bold"></h2>
+            <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+        <div id="detail-content" class="px-6 py-4 space-y-3 text-sm"></div>
+        <div class="px-6 py-4 border-t flex gap-2">
+            <a id="detail-linkedin" href="#" target="_blank" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 hidden">開啟 LinkedIn</a>
+            <a id="detail-github" href="#" target="_blank" class="px-3 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200 hidden">開啟 GitHub</a>
+            <button id="detail-ocr-btn" class="hidden px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm hover:bg-yellow-200" onclick="runOcrAnalysis()">
+                &#128269; OCR 深度分析
+            </button>
+            <span id="detail-ocr-status" class="text-xs text-gray-400 self-center"></span>
+        </div>
+    </div>
+</div>
+
+<!-- 推送確認 Modal -->
+<div id="push-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-lg font-bold">推送到 Step1ne 系統</h2>
+        </div>
+        <div class="px-6 py-4 space-y-3 text-sm">
+            <div id="push-summary"></div>
+            <div>
+                <label class="text-sm font-medium text-gray-700">最低推送等級</label>
+                <select id="push-min-grade" class="border rounded-lg px-3 py-2 text-sm mt-1 w-full">
+                    <option value="" selected>全部推送（含 D 級）</option>
+                    <option value="D">D 以上（全部）</option>
+                    <option value="C">C 以上</option>
+                    <option value="B">B 以上</option>
+                    <option value="A">A 以上（強推薦）</option>
+                </select>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t flex justify-end gap-2">
+            <button onclick="document.getElementById('push-modal').classList.add('hidden')" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">取消</button>
+            <button onclick="confirmPush()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">確認推送</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 0;
+let searchTimeout;
+let currentDetailCandidate = null;
+let allCandidates = [];  // 儲存完整候選人資料供推送用
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadResults, 300);
+}
+
+function gradeBadge(score, grade) {
+    if (!grade && !score) return '<span class="text-gray-300">--</span>';
+    const colors = {
+        'A': 'bg-green-100 text-green-700 border-green-300',
+        'B': 'bg-blue-100 text-blue-700 border-blue-300',
+        'C': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+        'D': 'bg-red-100 text-red-700 border-red-300',
+    };
+    const cls = colors[grade] || 'bg-gray-100 text-gray-600 border-gray-300';
+    return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${cls} font-medium">${score||0} <span class="font-bold">${grade||'?'}</span></span>`;
+}
+
+function loadResults() {
+    const limit = parseInt(document.getElementById('page-size').value);
+    const params = new URLSearchParams({
+        limit: limit,
+        offset: currentPage * limit,
+    });
+    const client = document.getElementById('f-client').value;
+    const status = document.getElementById('f-status').value;
+    if (client) params.set('client', client);
+    if (status) params.set('status', status);
+
+    fetch('/api/candidates?' + params)
+        .then(r => r.json())
+        .then(data => {
+            const items = data.data || [];
+            allCandidates = items;  // 儲存完整資料
+            const total = data.total || items.length;
+            const search = document.getElementById('f-search').value.toLowerCase();
+            const source = document.getElementById('f-source').value;
+            const grade = document.getElementById('f-grade').value;
+            const sort = document.getElementById('f-sort').value;
+
+            let filtered = items;
+            if (search) {
+                filtered = filtered.filter(r =>
+                    (r.name||'').toLowerCase().includes(search) ||
+                    (r.skills||'').toLowerCase().includes(search) ||
+                    (r.company||'').toLowerCase().includes(search)
+                );
+            }
+            if (source) {
+                filtered = filtered.filter(r => (r.source||'').toLowerCase() === source);
+            }
+            if (grade) {
+                filtered = filtered.filter(r => (r.grade||'') === grade);
+            }
+
+            // 排序
+            if (sort === 'score') {
+                filtered.sort((a, b) => (b.score||0) - (a.score||0));
+            } else if (sort === 'name') {
+                filtered.sort((a, b) => (a.name||'').localeCompare(b.name||''));
+            } else if (sort === 'date') {
+                filtered.sort((a, b) => (b.search_date||'').localeCompare(a.search_date||''));
+            }
+
+            document.getElementById('result-count').textContent = total;
+
+            // 等級統計 badges
+            const gradeCount = {A: 0, B: 0, C: 0, D: 0};
+            items.forEach(r => { if (r.grade && gradeCount.hasOwnProperty(r.grade)) gradeCount[r.grade]++; });
+            document.getElementById('grade-stats').innerHTML =
+                `<span class="px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700">A:${gradeCount.A}</span>` +
+                `<span class="px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700">B:${gradeCount.B}</span>` +
+                `<span class="px-1.5 py-0.5 rounded text-xs bg-yellow-100 text-yellow-700">C:${gradeCount.C}</span>` +
+                `<span class="px-1.5 py-0.5 rounded text-xs bg-red-100 text-red-700">D:${gradeCount.D}</span>`;
+
+            const tbody = document.getElementById('results-body');
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-gray-400 text-center">無結果</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(r => `
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="showDetail(${JSON.stringify(r).replace(/"/g, '&quot;')})">
+                    <td class="px-3 py-3"><input type="checkbox" class="row-check" data-id="${r.id}" data-grade="${r.grade||''}" data-score="${r.score||0}" onclick="event.stopPropagation()"></td>
+                    <td class="px-3 py-3 font-medium">${r.name||'--'}</td>
+                    <td class="px-3 py-3">${gradeBadge(r.score, r.grade)}</td>
+                    <td class="px-3 py-3"><span class="px-2 py-0.5 text-xs rounded-full ${sourceBadgeClass(r.source)}">${r.source||'--'}</span></td>
+                    <td class="px-3 py-3 text-xs">
+                        ${r.linkedin_url ? `<a href="${r.linkedin_url}" target="_blank" onclick="event.stopPropagation()" class="text-blue-600 hover:underline" title="${r.linkedin_url}">LinkedIn</a>` : ''}
+                        ${r.linkedin_url && r.github_url ? ' · ' : ''}
+                        ${r.github_url ? `<a href="${r.github_url}" target="_blank" onclick="event.stopPropagation()" class="text-gray-700 hover:underline" title="${r.github_url}">GitHub</a>` : ''}
+                        ${!r.linkedin_url && !r.github_url ? '--' : ''}
+                    </td>
+                    <td class="px-3 py-3">${r.company||'--'}</td>
+                    <td class="px-3 py-3">${r.location||'--'}</td>
+                    <td class="px-3 py-3 text-xs max-w-[200px] truncate">${r.skills||'--'}</td>
+                    <td class="px-3 py-3 text-xs">${r.job_title||'--'}</td>
+                </tr>
+            `).join('');
+        });
+}
+
+function sourceBadgeClass(source) {
+    if (source === 'linkedin') return 'bg-blue-100 text-blue-700';
+    if (source === 'github') return 'bg-gray-800 text-white';
+    if (source === 'li+ocr') return 'bg-yellow-100 text-yellow-700';
+    return 'bg-gray-100 text-gray-600';
+}
+
+function showDetail(r) {
+    currentDetailCandidate = r;
+    document.getElementById('detail-name').textContent = r.name || '--';
+
+    // LinkedIn / GitHub 連結區
+    let linksHtml = '<div class="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg">';
+    if (r.linkedin_url) {
+        linksHtml += `<div class="flex items-center gap-2">
+            <span class="inline-block w-5 h-5 bg-blue-600 rounded text-white text-xs text-center leading-5 font-bold">in</span>
+            <a href="${r.linkedin_url}" target="_blank" class="text-blue-600 hover:underline text-sm break-all">${r.linkedin_url}</a>
+        </div>`;
+    } else {
+        linksHtml += '<div class="text-gray-400 text-sm">LinkedIn: 無</div>';
+    }
+    if (r.github_url) {
+        linksHtml += `<div class="flex items-center gap-2">
+            <span class="inline-block w-5 h-5 bg-gray-800 rounded text-white text-xs text-center leading-5 font-bold">GH</span>
+            <a href="${r.github_url}" target="_blank" class="text-gray-700 hover:underline text-sm break-all">${r.github_url}</a>
+        </div>`;
+    } else {
+        linksHtml += '<div class="text-gray-400 text-sm">GitHub: 無</div>';
+    }
+    linksHtml += '</div>';
+
+    // 評分細項
+    let scoreHtml = '';
+    if (r.score || r.grade) {
+        scoreHtml = `<div class="p-3 bg-gray-50 rounded-lg border" id="score-section">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-medium">技能評分</span>
+                <span class="text-lg font-bold">${r.score||0} 分 ${gradeBadge(r.score, r.grade)}</span>
+            </div>
+            <div id="score-detail-area" class="text-xs text-gray-500">載入評分細項中...</div>
+        </div>`;
+
+        // 非同步載入評分細項
+        setTimeout(() => loadScoreDetail(r.id), 100);
+    }
+
+    document.getElementById('detail-content').innerHTML = `
+        ${linksHtml}
+        ${scoreHtml}
+        <div class="grid grid-cols-2 gap-2 mt-2">
+            <div><span class="text-gray-500">公司:</span> ${r.company||'--'}</div>
+            <div><span class="text-gray-500">地區:</span> ${r.location||'--'}</div>
+            <div><span class="text-gray-500">職稱:</span> ${r.title||r.bio||'--'}</div>
+            <div><span class="text-gray-500">Email:</span> ${r.email||'--'}</div>
+        </div>
+        <div><span class="text-gray-500">技能:</span> ${r.skills||'--'}</div>
+        ${r.public_repos ? `<div><span class="text-gray-500">Repos:</span> ${r.public_repos} | <span class="text-gray-500">Followers:</span> ${r.followers}</div>` : ''}
+        <div class="mt-2 pt-2 border-t text-xs text-gray-400">
+            來源: ${r.source||'--'} | 客戶: ${r.client_name||'--'} | 職缺: ${r.job_title||'--'} | ${r.search_date||'--'}
+        </div>
+    `;
+
+    // LinkedIn / GitHub 連結按鈕
+    const liLink = document.getElementById('detail-linkedin');
+    const ghLink = document.getElementById('detail-github');
+    if (r.linkedin_url) { liLink.href = r.linkedin_url; liLink.classList.remove('hidden'); }
+    else liLink.classList.add('hidden');
+    if (r.github_url) { ghLink.href = r.github_url; ghLink.classList.remove('hidden'); }
+    else ghLink.classList.add('hidden');
+
+    // OCR 按鈕（僅 LinkedIn 候選人顯示）
+    const ocrBtn = document.getElementById('detail-ocr-btn');
+    const ocrStatus = document.getElementById('detail-ocr-status');
+    if (r.linkedin_url) {
+        ocrBtn.classList.remove('hidden');
+        // 載入 OCR 配額
+        fetch('/api/linkedin/ocr-quota').then(res => res.json()).then(q => {
+            ocrStatus.textContent = `(本小時剩餘 ${q.quota_remaining}/${q.quota_total} 次)`;
+        }).catch(() => {});
+    } else {
+        ocrBtn.classList.add('hidden');
+        ocrStatus.textContent = '';
+    }
+
+    document.getElementById('detail-modal').classList.remove('hidden');
+}
+
+function loadScoreDetail(candidateId) {
+    fetch(`/api/score/detail/${candidateId}`)
+        .then(r => r.json())
+        .then(data => {
+            const area = document.getElementById('score-detail-area');
+            if (!area) return;
+
+            if (!data.sections || !data.sections.length) {
+                area.innerHTML = '<div class="text-gray-400">無評分細項</div>';
+                return;
+            }
+
+            let html = '';
+            data.sections.forEach(s => {
+                const pct = s.max > 0 ? Math.round(s.score / s.max * 100) : 0;
+                html += `<div class="mb-2">
+                    <div class="flex justify-between mb-0.5">
+                        <span>${s.label} (${s.score}/${s.max})</span>
+                        <span>${pct}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5">
+                        <div class="bg-blue-500 h-1.5 rounded-full" style="width:${pct}%"></div>
+                    </div>
+                    <div class="mt-0.5">
+                        ${s.matched.map(m => `<span class="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs mr-1 mb-0.5">&#10003; ${m}</span>`).join('')}
+                        ${s.missing.map(m => `<span class="inline-block px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-xs mr-1 mb-0.5">&#10007; ${m}</span>`).join('')}
+                    </div>
+                </div>`;
+            });
+
+            if (data.github_bonus) {
+                html += `<div class="mt-1"><span class="text-gray-500">GitHub 加分:</span> +${data.github_bonus}</div>`;
+            }
+
+            if (data.constraint_flags && data.constraint_flags.length) {
+                html += `<div class="mt-1 text-orange-600">&#9888; 限制條件: ${data.constraint_flags.join(', ')}</div>`;
+            }
+
+            html += `<div class="mt-1 text-gray-400">技能匹配率: ${Math.round((data.skill_match_rate||0)*100)}%</div>`;
+
+            area.innerHTML = html;
+        })
+        .catch(() => {
+            const area = document.getElementById('score-detail-area');
+            if (area) area.innerHTML = '<div class="text-gray-400">無法載入評分細項</div>';
+        });
+}
+
+function runOcrAnalysis() {
+    if (!currentDetailCandidate || !currentDetailCandidate.linkedin_url) return;
+
+    const btn = document.getElementById('detail-ocr-btn');
+    const status = document.getElementById('detail-ocr-status');
+    btn.disabled = true;
+    btn.textContent = '分析中...';
+    status.textContent = '';
+
+    fetch('/api/linkedin/ocr-analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            candidate_id: currentDetailCandidate.id,
+            client_name: currentDetailCandidate.client_name,
+            linkedin_url: currentDetailCandidate.linkedin_url,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = '\u{1F50D} OCR 深度分析';
+
+        if (data.success) {
+            const skills = (data.ocr_data.extracted_skills || []).join(', ');
+            const scoreChange = data.previous_score !== null
+                ? `${data.previous_score} → ${data.new_score} (${data.new_grade})`
+                : `${data.new_score} (${data.new_grade})`;
+
+            status.innerHTML = `<span class="text-green-600">&#10003; 分析完成</span>`;
+            alert(`OCR 分析完成！\n\n提取技能: ${skills || '無'}\n職稱: ${data.ocr_data.headline || '--'}\n經歷: ${data.ocr_data.experience || '--'}\n\n評分變化: ${scoreChange}\n剩餘配額: ${data.quota_remaining}/10`);
+            loadResults();  // 重新載入
+        } else {
+            status.innerHTML = `<span class="text-red-500">${data.error || '分析失敗'}</span>`;
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '\u{1F50D} OCR 深度分析';
+        status.innerHTML = '<span class="text-red-500">連線錯誤</span>';
+    });
+}
+
+function toggleSelectAll() {
+    const checked = document.getElementById('select-all').checked;
+    document.querySelectorAll('.row-check').forEach(c => c.checked = checked);
+}
+
+function getSelectedIds() {
+    return [...document.querySelectorAll('.row-check:checked')].map(c => c.dataset.id);
+}
+
+function getSelectedData() {
+    return [...document.querySelectorAll('.row-check:checked')].map(c => ({
+        id: c.dataset.id,
+        grade: c.dataset.grade,
+        score: parseInt(c.dataset.score) || 0,
+    }));
+}
+
+function pushSelected() {
+    const selected = getSelectedData();
+    if (!selected.length) { alert('請先勾選候選人'); return; }
+
+    // 統計等級
+    const gradeCount = {A: 0, B: 0, C: 0, D: 0};
+    selected.forEach(s => { if (gradeCount.hasOwnProperty(s.grade)) gradeCount[s.grade]++; });
+
+    document.getElementById('push-summary').innerHTML = `
+        <div class="text-base font-medium mb-2">已選 ${selected.length} 位候選人</div>
+        <div class="flex gap-3">
+            <span class="px-2 py-1 rounded text-xs bg-green-100 text-green-700">A: ${gradeCount.A}</span>
+            <span class="px-2 py-1 rounded text-xs bg-blue-100 text-blue-700">B: ${gradeCount.B}</span>
+            <span class="px-2 py-1 rounded text-xs bg-yellow-100 text-yellow-700">C: ${gradeCount.C}</span>
+            <span class="px-2 py-1 rounded text-xs bg-red-100 text-red-700">D: ${gradeCount.D}</span>
+        </div>
+    `;
+    document.getElementById('push-modal').classList.remove('hidden');
+}
+
+function confirmPush() {
+    const selectedIds = new Set(getSelectedIds());
+    const minGrade = document.getElementById('push-min-grade').value;
+    document.getElementById('push-modal').classList.add('hidden');
+
+    // 從完整候選人資料中取得已勾選的候選人（包含 name, skills, title 等欄位）
+    const fullCandidates = allCandidates.filter(c => selectedIds.has(c.id));
+    if (!fullCandidates.length) {
+        alert('找不到已選候選人的完整資料，請重新載入頁面');
+        return;
+    }
+
+    fetch('/api/system/push', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            candidates: fullCandidates,
+            min_grade: minGrade,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert('推送失敗: ' + data.error);
+        } else {
+            const created = data.created_count || 0;
+            const updated = data.updated_count || 0;
+            const failed = data.failed_count || 0;
+            alert(`推送完成！\n新增: ${created} 位\n更新: ${updated} 位\n失敗: ${failed} 位`);
+            loadResults();
+        }
+    })
+    .catch(() => alert('推送失敗: 連線錯誤'));
+}
+
+function rescoreAll() {
+    const client = document.getElementById('f-client').value;
+    if (!client) {
+        alert('請先選擇一個客戶（左上角篩選器）');
+        return;
+    }
+    if (!confirm(`重新評分「${client}」的所有候選人？`)) return;
+
+    fetch('/api/score/candidates', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ client_name: client })
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(`已重新評分 ${data.scored || 0} 位候選人`);
+        loadResults();
+    })
+    .catch(() => alert('評分失敗'));
+}
+
+function exportSelected() {
+    fetch('/api/candidates/export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({limit: 1000})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'candidates_export.json'; a.click();
+    });
+}
+
+// 載入客戶列表
+fetch('/api/clients').then(r => r.json()).then(clients => {
+    const sel = document.getElementById('f-client');
+    clients.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o); });
+});
+
+loadResults();
+</script>
+{% endblock %}

@@ -1,0 +1,4 @@
+id,name,source,github_url,linkedin_url,email,location,bio,company,title,skills,public_repos,followers,job_title,search_date,task_id,status,created_at
+範例-001,王小明,linkedin,,https://www.linkedin.com/in/wang-xiaoming/,wang@example.com,Taipei,Senior Java Developer,Google,資深Java工程師,"Java, Spring Boot, MySQL, Redis",0,0,Java 後端工程師,2026-03-05,task-001,new,2026-03-05 10:00:00
+範例-002,John Doe,github,https://github.com/johndoe,,,Taiwan,Full-stack developer with 5 years experience,Shopee,Full-Stack Developer,"Python, Django, React, PostgreSQL",42,120,Python 全端工程師,2026-03-05,task-002,new,2026-03-05 10:00:00
+範例-003,陳美麗,li+ocr,,https://www.linkedin.com/in/chen-meili/,,新竹,Frontend Engineer,TSMC,前端工程師,"React, TypeScript, Next.js",0,0,前端工程師,2026-03-05,task-003,new,2026-03-05 10:00:00

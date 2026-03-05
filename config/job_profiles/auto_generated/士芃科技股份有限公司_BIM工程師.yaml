@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: BIM工程師
+  must_have:
+  - skill: bim
+    weight: 8
+  - skill: revit
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: autocad
+    weight: 4
+  - skill: 工程協調
+    weight: 3
+  - skill: 建築
+    weight: 2
+  - skill: 施工監督
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: 文件管理師
+  must_have:
+  - skill: 文件管理
+    weight: 8
+  - skill: sharepoint
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: 專案助理
+    weight: 4
+  - skill: 文書行政
+    weight: 3
+  - skill: 工程文件
+    weight: 2
+  - skill: 英文讀寫
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

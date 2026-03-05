@@ -1,0 +1,4 @@
+linkedin_url,github_url,name,client_name,job_title,imported_at,status,system_id
+https://www.linkedin.com/in/wang-xiaoming/,,王小明,一通數位,Java 後端工程師,2026-03-05 10:00:00,new,
+,https://github.com/johndoe,John Doe,台積電,Python 全端工程師,2026-03-05 10:00:00,imported,1234
+https://www.linkedin.com/in/chen-meili/,,陳美麗,一通數位,前端工程師,2026-03-05 10:00:00,skipped,

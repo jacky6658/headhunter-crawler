@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Settings - HeadHunter Crawler{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Settings</h1>
+    <button onclick="saveSettings()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">儲存設定</button>
+</div>
+
+<div class="space-y-6">
+    <!-- Step1ne 系統連結 -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="font-medium text-gray-800 mb-3">Step1ne 系統連結</h3>
+        <div class="space-y-3">
+            <div class="flex gap-3 items-end">
+                <div class="flex-1">
+                    <label class="text-sm text-gray-600">API 位址</label>
+                    <input id="s-api-url" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="https://step1ne.zeabur.app">
+                </div>
+                <button onclick="testConnection()" class="bg-gray-100 px-3 py-2 rounded-lg text-sm hover:bg-gray-200">測試連線</button>
+            </div>
+            <div id="connection-status" class="text-sm"></div>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" id="s-auto-push">
+                爬蟲完成後自動推送候選人到系統（預設關閉）
+            </label>
+        </div>
+    </div>
+
+    <!-- API Keys -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="font-medium text-gray-800 mb-3">API Keys</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="text-sm text-gray-600">GitHub Token(s)</label>
+                <div id="github-tokens" class="space-y-2 mt-1"></div>
+                <button onclick="addGithubToken()" class="text-sm text-blue-600 hover:text-blue-800 mt-1">+ 新增 Token</button>
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">Brave Search API Key</label>
+                <input id="s-brave-key" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="BSA-xxxxx...">
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">Google Sheets Spreadsheet ID</label>
+                <input id="s-sheet-id" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="1PunpaDAF...">
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">Service Account JSON 路徑</label>
+                <input id="s-creds-file" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" value="credentials.json">
+            </div>
+        </div>
+    </div>
+
+    <!-- 爬蟲設定 -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="font-medium text-gray-800 mb-3">爬蟲設定</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+                <label class="text-sm text-gray-600">瀏覽器池大小</label>
+                <select id="s-pool-size" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                    <option value="1">1</option><option value="2">2</option>
+                    <option value="3" selected>3</option><option value="4">4</option><option value="5">5</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">預設搜尋地區</label>
+                <select id="s-location" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                    <option value="Taiwan">Taiwan</option>
+                    <option value="Singapore">Singapore</option>
+                    <option value="Hong Kong">Hong Kong</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">每頁取樣</label>
+                <input id="s-sample" type="number" value="5" min="1" max="10" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+            </div>
+            <div class="flex flex-col justify-end gap-2">
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="s-headless" checked> Headless 模式</label>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="s-ocr" checked> OCR 啟用</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- 反偵測設定 -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="font-medium text-gray-800 mb-3">反偵測設定</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+                <label class="text-sm text-gray-600">請求間隔 最小(秒)</label>
+                <input id="s-req-min" type="number" step="0.5" value="2.0" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+            </div>
+            <div>
+                <label class="text-sm text-gray-600">請求間隔 最大(秒)</label>
+                <input id="s-req-max" type="number" step="0.5" value="5.0" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+            </div>
+            <div class="flex flex-col justify-end">
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="s-ssl"> SSL 驗證</label>
+            </div>
+            <div class="flex flex-col justify-end">
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="s-proxy"> 啟用代理</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- 去重快取 -->
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="font-medium text-gray-800 mb-3">去重快取</h3>
+        <div class="flex items-center gap-4">
+            <span class="text-sm">LinkedIn: <strong id="dedup-li">--</strong></span>
+            <span class="text-sm">GitHub: <strong id="dedup-gh">--</strong></span>
+            <button onclick="clearDedup('linkedin')" class="text-sm px-3 py-1 border rounded hover:bg-red-50 text-red-600">清除 LinkedIn</button>
+            <button onclick="clearDedup('github')" class="text-sm px-3 py-1 border rounded hover:bg-red-50 text-red-600">清除 GitHub</button>
+            <button onclick="clearDedup()" class="text-sm px-3 py-1 border rounded hover:bg-red-50 text-red-600">全部清除</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let githubTokens = [];
+
+function loadSettings() {
+    fetch('/api/settings')
+        .then(r => r.json())
+        .then(cfg => {
+            document.getElementById('s-api-url').value = cfg.step1ne?.api_base_url || '';
+            document.getElementById('s-auto-push').checked = cfg.step1ne?.auto_push || false;
+            document.getElementById('s-pool-size').value = cfg.crawler?.browser_pool_size || 3;
+            document.getElementById('s-location').value = cfg.crawler?.default_location || 'Taiwan';
+            document.getElementById('s-sample').value = cfg.crawler?.sample_per_page || 5;
+            document.getElementById('s-headless').checked = cfg.crawler?.headless !== false;
+            document.getElementById('s-ocr').checked = cfg.crawler?.ocr_enabled !== false;
+            document.getElementById('s-req-min').value = cfg.anti_detect?.request_delay?.min || 2.0;
+            document.getElementById('s-req-max').value = cfg.anti_detect?.request_delay?.max || 5.0;
+            document.getElementById('s-ssl').checked = cfg.anti_detect?.ssl_verify || false;
+            document.getElementById('s-proxy').checked = cfg.anti_detect?.proxy?.enabled || false;
+            document.getElementById('s-sheet-id').value = cfg.google_sheets?.spreadsheet_id || '';
+
+            // GitHub tokens
+            const count = cfg.api_keys?.github_token_count || 0;
+            githubTokens = new Array(count).fill('***');
+            renderGithubTokens();
+        });
+
+    // 去重統計
+    fetch('/api/dedup/stats')
+        .then(r => r.json())
+        .then(s => {
+            document.getElementById('dedup-li').textContent = s.linkedin || 0;
+            document.getElementById('dedup-gh').textContent = s.github || 0;
+        })
+        .catch(() => {});
+}
+
+function renderGithubTokens() {
+    const container = document.getElementById('github-tokens');
+    container.innerHTML = githubTokens.map((t, i) => `
+        <div class="flex gap-2">
+            <input type="password" value="${t}" class="gh-token flex-1 border rounded px-3 py-1 text-sm" data-idx="${i}" placeholder="ghp_...">
+            <button onclick="removeGithubToken(${i})" class="text-red-400 hover:text-red-600 text-sm">&#128465;</button>
+        </div>
+    `).join('');
+}
+
+function addGithubToken() {
+    githubTokens.push('');
+    renderGithubTokens();
+}
+
+function removeGithubToken(idx) {
+    githubTokens.splice(idx, 1);
+    renderGithubTokens();
+}
+
+function testConnection() {
+    const url = document.getElementById('s-api-url').value;
+    if (!url) { alert('請先輸入 API 位址'); return; }
+    document.getElementById('connection-status').innerHTML = '<span class="text-gray-500">測試中...</span>';
+
+    // 先儲存 URL，再測試
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ step1ne: { api_base_url: url } })
+    }).then(() => {
+        return fetch('/api/system/test');
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.connected) {
+            document.getElementById('connection-status').innerHTML =
+                `<span class="text-green-600">已連線 (${data.job_count} 個職缺)</span>`;
+        } else {
+            document.getElementById('connection-status').innerHTML =
+                `<span class="text-red-500">連線失敗: ${data.error || '未知錯誤'}</span>`;
+        }
+    })
+    .catch(() => {
+        document.getElementById('connection-status').innerHTML =
+            '<span class="text-red-500">連線失敗</span>';
+    });
+}
+
+function saveSettings() {
+    const tokens = [...document.querySelectorAll('.gh-token')]
+        .map(el => el.value.trim())
+        .filter(t => t && t !== '***');
+
+    const settings = {
+        step1ne: {
+            api_base_url: document.getElementById('s-api-url').value.trim(),
+            auto_push: document.getElementById('s-auto-push').checked,
+        },
+        api_keys: {
+            brave_api_key: document.getElementById('s-brave-key').value.trim() || undefined,
+        },
+        crawler: {
+            browser_pool_size: parseInt(document.getElementById('s-pool-size').value),
+            default_location: document.getElementById('s-location').value,
+            sample_per_page: parseInt(document.getElementById('s-sample').value),
+            headless: document.getElementById('s-headless').checked,
+            ocr_enabled: document.getElementById('s-ocr').checked,
+        },
+        anti_detect: {
+            request_delay: {
+                min: parseFloat(document.getElementById('s-req-min').value),
+                max: parseFloat(document.getElementById('s-req-max').value),
+            },
+            ssl_verify: document.getElementById('s-ssl').checked,
+            proxy: { enabled: document.getElementById('s-proxy').checked },
+        },
+        google_sheets: {
+            spreadsheet_id: document.getElementById('s-sheet-id').value.trim(),
+            credentials_file: document.getElementById('s-creds-file').value.trim(),
+        },
+    };
+    if (tokens.length) settings.api_keys.github_tokens = tokens;
+
+    fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(settings),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) alert('設定已儲存');
+        else alert('儲存失敗: ' + (data.error || ''));
+    });
+}
+
+function clearDedup(source) {
+    const msg = source ? `清除 ${source} 去重快取？` : '清除所有去重快取？';
+    if (!confirm(msg)) return;
+    fetch('/api/dedup/clear', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ source: source || null }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('dedup-li').textContent = data.stats?.linkedin || 0;
+        document.getElementById('dedup-gh').textContent = data.stats?.github || 0;
+    });
+}
+
+loadSettings();
+</script>
+{% endblock %}

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - HeadHunter Crawler{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+    <span id="last-update" class="text-sm text-gray-500"></span>
+</div>
+
+<!-- 統計卡片 -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="text-sm text-gray-500">候選人總數</div>
+        <div class="text-3xl font-bold text-gray-800 mt-1" id="stat-total">--</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="text-sm text-gray-500">今日新增</div>
+        <div class="text-3xl font-bold text-green-600 mt-1" id="stat-today">--</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="text-sm text-gray-500">執行中任務</div>
+        <div class="text-3xl font-bold text-blue-600 mt-1" id="stat-running">--</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-5">
+        <div class="text-sm text-gray-500">排程任務</div>
+        <div class="text-3xl font-bold text-purple-600 mt-1" id="stat-scheduled">--</div>
+    </div>
+</div>
+
+<!-- 評分等級分佈 -->
+<div class="bg-white rounded-lg shadow p-5 mb-6">
+    <h3 class="text-sm font-medium text-gray-500 mb-3">評分等級分佈</h3>
+    <div class="flex gap-4 items-end" id="grade-bars">
+        <div class="flex-1 text-center">
+            <div class="bg-green-100 rounded-t" id="bar-A" style="height:20px"></div>
+            <div class="text-xs mt-1 font-medium text-green-700">A 強推薦</div>
+            <div class="text-lg font-bold text-green-700" id="grade-A">0</div>
+        </div>
+        <div class="flex-1 text-center">
+            <div class="bg-blue-100 rounded-t" id="bar-B" style="height:20px"></div>
+            <div class="text-xs mt-1 font-medium text-blue-700">B 推薦</div>
+            <div class="text-lg font-bold text-blue-700" id="grade-B">0</div>
+        </div>
+        <div class="flex-1 text-center">
+            <div class="bg-yellow-100 rounded-t" id="bar-C" style="height:20px"></div>
+            <div class="text-xs mt-1 font-medium text-yellow-700">C 待評估</div>
+            <div class="text-lg font-bold text-yellow-700" id="grade-C">0</div>
+        </div>
+        <div class="flex-1 text-center">
+            <div class="bg-red-100 rounded-t" id="bar-D" style="height:20px"></div>
+            <div class="text-xs mt-1 font-medium text-red-700">D 不推薦</div>
+            <div class="text-lg font-bold text-red-700" id="grade-D">0</div>
+        </div>
+    </div>
+</div>
+
+<!-- 圖表 -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">客戶分佈</h3>
+        <canvas id="chart-clients" height="200"></canvas>
+    </div>
+    <div class="bg-white rounded-lg shadow p-5">
+        <h3 class="text-sm font-medium text-gray-500 mb-3">來源分佈</h3>
+        <canvas id="chart-sources" height="200"></canvas>
+    </div>
+</div>
+
+<!-- 最近執行紀錄 -->
+<div class="bg-white rounded-lg shadow">
+    <div class="px-5 py-4 border-b">
+        <h3 class="text-sm font-medium text-gray-500">最近執行紀錄</h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-gray-500">時間</th>
+                    <th class="px-4 py-3 text-left text-gray-500">客戶</th>
+                    <th class="px-4 py-3 text-left text-gray-500">職缺</th>
+                    <th class="px-4 py-3 text-left text-gray-500">結果</th>
+                    <th class="px-4 py-3 text-left text-gray-500">狀態</th>
+                </tr>
+            </thead>
+            <tbody id="recent-runs" class="divide-y">
+                <tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">載入中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let clientsChart, sourcesChart;
+
+function initCharts() {
+    const clientsCtx = document.getElementById('chart-clients');
+    clientsChart = new Chart(clientsCtx, {
+        type: 'doughnut',
+        data: { labels: [], datasets: [{ data: [], backgroundColor: ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899'] }] },
+        options: { responsive: true, plugins: { legend: { position: 'right' } } }
+    });
+    const sourcesCtx = document.getElementById('chart-sources');
+    sourcesChart = new Chart(sourcesCtx, {
+        type: 'doughnut',
+        data: { labels: ['LinkedIn','GitHub','LI+OCR'], datasets: [{ data: [0,0,0], backgroundColor: ['#0A66C2','#333','#F59E0B'] }] },
+        options: { responsive: true, plugins: { legend: { position: 'right' } } }
+    });
+}
+
+function loadDashboard() {
+    fetch('/api/dashboard/stats')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('stat-total').textContent = data.total_candidates || 0;
+            document.getElementById('stat-today').textContent = '+' + (data.today_new || 0);
+            document.getElementById('stat-running').textContent = data.running_tasks || 0;
+            document.getElementById('stat-scheduled').textContent = data.scheduled_tasks || 0;
+            document.getElementById('last-update').textContent = '最後更新: ' + new Date().toLocaleTimeString();
+
+            // 更新圖表
+            if (data.clients) {
+                clientsChart.data.labels = Object.keys(data.clients);
+                clientsChart.data.datasets[0].data = Object.values(data.clients);
+                clientsChart.update();
+            }
+            if (data.sources) {
+                sourcesChart.data.datasets[0].data = [
+                    data.sources.linkedin || 0,
+                    data.sources.github || 0,
+                    data.sources['li+ocr'] || 0,
+                ];
+                sourcesChart.update();
+            }
+
+            // 評分等級分佈
+            if (data.grades) {
+                const grades = data.grades;
+                const maxG = Math.max(grades.A||0, grades.B||0, grades.C||0, grades.D||0, 1);
+                ['A','B','C','D'].forEach(g => {
+                    const count = grades[g] || 0;
+                    document.getElementById('grade-' + g).textContent = count;
+                    const bar = document.getElementById('bar-' + g);
+                    bar.style.height = Math.max(20, (count / maxG) * 120) + 'px';
+                });
+            }
+
+            // 最近執行
+            const tbody = document.getElementById('recent-runs');
+            const runs = data.recent_runs || [];
+            if (runs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-3 text-gray-400 text-center">尚無執行紀錄</td></tr>';
+            } else {
+                tbody.innerHTML = runs.map(r => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">${r.last_run || '--'}</td>
+                        <td class="px-4 py-3 font-medium">${r.client_name}</td>
+                        <td class="px-4 py-3">${r.job_title}</td>
+                        <td class="px-4 py-3">${r.status === 'running' ? '爬取中...' : '+' + (r.last_result_count || 0) + '人'}</td>
+                        <td class="px-4 py-3">${statusBadge(r.status, r.progress)}</td>
+                    </tr>
+                `).join('');
+            }
+        })
+        .catch(e => console.error('Dashboard load error:', e));
+}
+
+function statusBadge(status, progress) {
+    const map = {
+        'completed': '<span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">完成</span>',
+        'running': `<span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">${progress || 0}%</span>`,
+        'failed': '<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">失敗</span>',
+        'pending': '<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">等待</span>',
+    };
+    return map[status] || status;
+}
+
+initCharts();
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+{% endblock %}

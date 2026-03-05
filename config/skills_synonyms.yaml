@@ -1,0 +1,311 @@
+# 技能同義詞字典
+# 合併自 search-plan-executor.py SKILL_SYNONYMS + githubAnalysisService.js SKILL_ALIASES
+# 格式: 標準化 key → 別名列表（搜尋時自動展開）
+#
+# LinkedIn 搜尋用: 展開為 OR 查詢
+# GitHub 分析用: fuzzy matching 比對
+
+# ── JavaScript 生態 ──────────────────────────────────────────
+javascript:
+  - JavaScript
+  - JS
+  - ECMAScript
+  - ES6
+  - ES2015
+
+typescript:
+  - TypeScript
+  - TS
+
+react:
+  - React
+  - React.js
+  - ReactJS
+  - React-Native
+
+vue:
+  - Vue
+  - Vue.js
+  - VueJS
+  - Vue3
+  - Nuxt
+
+angular:
+  - Angular
+  - AngularJS
+  - Angular.js
+
+nextjs:
+  - Next.js
+  - NextJS
+  - Next
+
+nuxt:
+  - Nuxt.js
+  - NuxtJS
+  - Nuxt
+
+nodejs:
+  - Node.js
+  - NodeJS
+  - Node
+  - Express
+  - ExpressJS
+
+# ── Python 生態 ──────────────────────────────────────────────
+python:
+  - Python
+  - Python3
+  - Py
+
+django:
+  - Django
+
+fastapi:
+  - FastAPI
+
+flask:
+  - Flask
+
+# ── Go / Golang ──────────────────────────────────────────────
+golang:
+  - Go
+  - Golang
+
+# ── JVM ──────────────────────────────────────────────────────
+java:
+  - Java
+  - JDK
+  - JVM
+  - OpenJDK
+
+kotlin:
+  - Kotlin
+  - Android-Kotlin
+
+scala:
+  - Scala
+
+spring:
+  - Spring
+  - Spring Boot
+  - SpringBoot
+  - Spring-Boot
+  - Spring Framework
+  - Spring Cloud
+
+# ── .NET ─────────────────────────────────────────────────────
+csharp:
+  - C#
+  - CSharp
+  - C-Sharp
+  - .NET
+  - DotNet
+  - ASP.NET
+  - AspNet
+
+# ── 行動開發 ─────────────────────────────────────────────────
+swift:
+  - Swift
+  - SwiftUI
+  - iOS
+  - iOS-Swift
+
+android:
+  - Android
+  - Kotlin
+
+# ── Rust / C++ / Ruby / PHP ──────────────────────────────────
+rust:
+  - Rust
+  - Rust-Lang
+
+cpp:
+  - C++
+  - CPlusPlus
+  - C-Plus-Plus
+  - CPP
+
+ruby:
+  - Ruby
+  - Rails
+  - Ruby-on-Rails
+
+php:
+  - PHP
+  - Laravel
+  - Symfony
+
+# ── 資料 / ML / AI ───────────────────────────────────────────
+machinelearning:
+  - Machine Learning
+  - ML
+  - Deep Learning
+  - TensorFlow
+  - PyTorch
+  - AI
+
+deeplearning:
+  - Deep Learning
+  - DL
+
+pytorch:
+  - PyTorch
+
+tensorflow:
+  - TensorFlow
+  - TF
+
+llm:
+  - LLM
+  - Large Language Model
+
+rag:
+  - RAG
+  - Retrieval Augmented Generation
+
+# ── 雲端 & DevOps ────────────────────────────────────────────
+aws:
+  - AWS
+  - Amazon Web Services
+  - EC2
+  - S3
+  - Lambda
+  - CloudFormation
+
+gcp:
+  - GCP
+  - Google Cloud
+  - Google Cloud Platform
+  - GKE
+
+azure:
+  - Azure
+  - Microsoft Azure
+
+aliyun:
+  - Aliyun
+  - Alibaba Cloud
+  - AliCloud
+
+kubernetes:
+  - Kubernetes
+  - K8s
+  - Helm
+  - Kubectl
+
+docker:
+  - Docker
+  - Dockerfile
+  - Container
+  - Docker-Compose
+  - Containerization
+
+devops:
+  - DevOps
+  - SRE
+  - Site-Reliability
+
+cicd:
+  - CI/CD
+  - GitHub Actions
+  - Jenkins
+  - GitLab CI
+  - CircleCI
+  - Travis CI
+
+terraform:
+  - Terraform
+  - HCL
+  - Infrastructure-as-Code
+
+ansible:
+  - Ansible
+  - Ansible-Playbook
+
+# ── 資料庫 ───────────────────────────────────────────────────
+postgresql:
+  - PostgreSQL
+  - Postgres
+  - PG
+  - PostGIS
+
+mysql:
+  - MySQL
+  - MariaDB
+
+mongodb:
+  - MongoDB
+  - Mongo
+  - Mongoose
+
+redis:
+  - Redis
+  - Redis-Cache
+
+elasticsearch:
+  - Elasticsearch
+  - ES
+  - OpenSearch
+  - ELK
+  - Elastic
+
+kafka:
+  - Kafka
+  - Apache-Kafka
+  - Confluent
+
+rabbitmq:
+  - RabbitMQ
+  - AMQP
+  - Message-Queue
+
+# ── API & 架構 ───────────────────────────────────────────────
+graphql:
+  - GraphQL
+  - Apollo
+  - Hasura
+
+rest:
+  - REST
+  - RESTful
+  - REST-API
+  - OpenAPI
+  - Swagger
+
+microservices:
+  - Microservices
+  - Microservice
+  - Micro-Service
+
+# ── 區塊鏈 ──────────────────────────────────────────────────
+solidity:
+  - Solidity
+
+web3:
+  - Web3
+  - Blockchain
+
+# ── 資安 ────────────────────────────────────────────────────
+security:
+  - Security
+  - 資安
+  - Cybersecurity
+
+# ── 作業系統 & 工具 ──────────────────────────────────────────
+linux:
+  - Linux
+  - Ubuntu
+  - Debian
+  - CentOS
+  - Fedora
+
+git:
+  - Git
+  - GitHub
+
+# ── 監控 ────────────────────────────────────────────────────
+grafana:
+  - Grafana
+  - Prometheus
+  - Monitoring

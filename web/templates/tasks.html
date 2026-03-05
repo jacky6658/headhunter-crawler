@@ -1,0 +1,791 @@
+{% extends "base.html" %}
+{% block title %}Tasks - HeadHunter Crawler{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Tasks</h1>
+    <button onclick="openModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">+ 新增任務</button>
+</div>
+
+<!-- 篩選列 -->
+<div class="flex gap-3 mb-4">
+    <select id="filter-client" class="border rounded-lg px-3 py-2 text-sm" onchange="loadTasks()">
+        <option value="">客戶: 全部</option>
+    </select>
+    <select id="filter-status" class="border rounded-lg px-3 py-2 text-sm" onchange="loadTasks()">
+        <option value="">狀態: 全部</option>
+        <option value="running">執行中</option>
+        <option value="completed">已完成</option>
+        <option value="pending">等待中</option>
+        <option value="failed">失敗</option>
+    </select>
+</div>
+
+<!-- 任務列表 -->
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-4 py-3 text-left text-gray-500">客戶</th>
+                <th class="px-4 py-3 text-left text-gray-500">職缺</th>
+                <th class="px-4 py-3 text-left text-gray-500">技能</th>
+                <th class="px-4 py-3 text-left text-gray-500">排程</th>
+                <th class="px-4 py-3 text-left text-gray-500">狀態</th>
+                <th class="px-4 py-3 text-left text-gray-500">操作</th>
+            </tr>
+        </thead>
+        <tbody id="tasks-body" class="divide-y">
+            <tr><td colspan="6" class="px-4 py-8 text-gray-400 text-center">載入中...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 新增任務 Modal -->
+<div id="task-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+        <div class="px-6 py-4 border-b flex justify-between items-center">
+            <h2 class="text-lg font-bold">新增搜尋任務</h2>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+            <!-- 資料來源切換 -->
+            <div class="flex gap-4">
+                <label class="flex items-center gap-2">
+                    <input type="radio" name="source-mode" value="api" checked onchange="toggleSourceMode()">
+                    <span class="text-sm font-medium">從系統 API 匯入</span>
+                </label>
+                <label class="flex items-center gap-2">
+                    <input type="radio" name="source-mode" value="manual" onchange="toggleSourceMode()">
+                    <span class="text-sm font-medium">手動輸入</span>
+                </label>
+            </div>
+
+            <!-- 系統 API 匯入模式 -->
+            <div id="api-mode">
+                <button onclick="loadSystemJobs()" class="bg-gray-100 px-3 py-2 rounded text-sm hover:bg-gray-200 transition">
+                    &#128260; 載入職缺列表
+                </button>
+                <div id="system-jobs-status" class="text-sm text-gray-500 mt-1"></div>
+                <div id="system-jobs-list" class="mt-3 max-h-60 overflow-y-auto border rounded-lg hidden">
+                    <!-- 動態填入 -->
+                </div>
+            </div>
+
+            <!-- 手動輸入模式 -->
+            <div id="manual-mode" class="hidden space-y-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">客戶名稱</label>
+                    <input id="manual-client" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. 一通數位">
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">職缺名稱</label>
+                    <input id="manual-job" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Java 工程師">
+                </div>
+            </div>
+
+            <!-- 技能設定 -->
+            <div>
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700">主要技能 (AND，必須符合)</label>
+                    <button onclick="autoGenerateKeywords()" id="auto-gen-btn" class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition flex items-center gap-1">
+                        &#129302; 自動生成關鍵字
+                    </button>
+                </div>
+                <div id="primary-skills" class="flex flex-wrap gap-2 mt-1">
+                    <input id="add-primary" type="text" class="border rounded px-2 py-1 text-sm w-32" placeholder="+新增" onkeydown="if(event.key==='Enter'){addSkill('primary');event.preventDefault()}">
+                </div>
+                <div id="auto-gen-status" class="text-xs text-gray-400 mt-1 hidden"></div>
+            </div>
+            <div>
+                <label class="text-sm font-medium text-gray-700">次要技能 (OR，符合其一)</label>
+                <div id="secondary-skills" class="flex flex-wrap gap-2 mt-1">
+                    <input id="add-secondary" type="text" class="border rounded px-2 py-1 text-sm w-32" placeholder="+新增" onkeydown="if(event.key==='Enter'){addSkill('secondary');event.preventDefault()}">
+                </div>
+            </div>
+
+            <!-- 地區 + 頁數 -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">搜尋地區</label>
+                    <input id="task-location" type="text" list="location-list" value="Taiwan" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="輸入或選擇地區">
+                    <datalist id="location-list">
+                        <option value="Taiwan">台灣</option>
+                        <option value="Taipei, Taiwan">台北</option>
+                        <option value="Singapore">新加坡</option>
+                        <option value="Hong Kong">香港</option>
+                        <option value="Japan">日本</option>
+                        <option value="Tokyo, Japan">東京</option>
+                        <option value="United States">美國</option>
+                        <option value="San Francisco, USA">舊金山</option>
+                        <option value="New York, USA">紐約</option>
+                        <option value="United Kingdom">英國</option>
+                        <option value="London, UK">倫敦</option>
+                        <option value="Germany">德國</option>
+                        <option value="Berlin, Germany">柏林</option>
+                        <option value="Canada">加拿大</option>
+                        <option value="Australia">澳洲</option>
+                        <option value="China">中國</option>
+                        <option value="Shanghai, China">上海</option>
+                        <option value="Shenzhen, China">深圳</option>
+                        <option value="Korea">韓國</option>
+                        <option value="Vietnam">越南</option>
+                        <option value="India">印度</option>
+                        <option value="Southeast Asia">東南亞</option>
+                    </datalist>
+                    <p class="text-xs text-gray-400 mt-1">可自由輸入任何地區，例如「Remote」或城市名</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">搜尋頁數</label>
+                    <input id="task-pages" type="number" value="3" min="1" max="10" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                </div>
+            </div>
+
+            <!-- 排程設定 -->
+            <div class="border-t pt-4">
+                <label class="text-sm font-medium text-gray-700">排程類型</label>
+                <div class="flex gap-4 mt-1">
+                    <label class="flex items-center gap-1 text-sm"><input type="radio" name="schedule" value="once" checked> 立即執行</label>
+                    <label class="flex items-center gap-1 text-sm"><input type="radio" name="schedule" value="daily"> 每日</label>
+                    <label class="flex items-center gap-1 text-sm"><input type="radio" name="schedule" value="weekly"> 每週</label>
+                    <label class="flex items-center gap-1 text-sm"><input type="radio" name="schedule" value="interval"> 間隔</label>
+                </div>
+                <div id="schedule-options" class="mt-2 hidden">
+                    <input id="schedule-time" type="time" value="09:00" class="border rounded px-2 py-1 text-sm">
+                    <input id="schedule-interval" type="number" value="6" min="1" max="24" class="border rounded px-2 py-1 text-sm w-20 hidden" placeholder="小時">
+                </div>
+            </div>
+
+            <!-- 完成後動作 -->
+            <div class="border-t pt-4">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="auto-push">
+                    爬完後自動推送候選人到 Step1ne 系統
+                </label>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t flex justify-end gap-3">
+            <button onclick="closeModal()" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">取消</button>
+            <button onclick="createTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">建立並執行</button>
+        </div>
+    </div>
+</div>
+<!-- 編輯任務 Modal -->
+<div id="edit-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
+        <div class="px-6 py-4 border-b flex justify-between items-center">
+            <h2 class="text-lg font-bold">編輯任務設定</h2>
+            <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+            <input type="hidden" id="edit-task-id">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">客戶名稱</label>
+                    <input id="edit-client" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">職缺名稱</label>
+                    <input id="edit-job" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                </div>
+            </div>
+            <div>
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700">主要技能 (AND，以逗號分隔)</label>
+                    <button onclick="autoGenerateKeywordsEdit()" class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition flex items-center gap-1">
+                        &#129302; 自動生成
+                    </button>
+                </div>
+                <input id="edit-primary" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="DevOps, SRE">
+                <div id="edit-auto-gen-status" class="text-xs text-gray-400 mt-1 hidden"></div>
+            </div>
+            <div>
+                <label class="text-sm font-medium text-gray-700">次要技能 (OR，以逗號分隔)</label>
+                <input id="edit-secondary" type="text" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="Kubernetes, AWS, Terraform">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">搜尋地區</label>
+                    <input id="edit-location" type="text" list="location-list" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">搜尋頁數</label>
+                    <input id="edit-pages" type="number" min="1" max="10" class="w-full border rounded-lg px-3 py-2 text-sm mt-1">
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t flex justify-between">
+            <button onclick="saveAndRerun()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                &#9654; 儲存並重新執行
+            </button>
+            <div class="flex gap-2">
+                <button onclick="closeEditModal()" class="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50">取消</button>
+                <button onclick="saveEdit()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">儲存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let primarySkills = [], secondarySkills = [];
+
+function loadTasks() {
+    fetch('/api/tasks')
+        .then(r => r.json())
+        .then(tasks => {
+            window._allTasksCache = tasks;
+            const tbody = document.getElementById('tasks-body');
+            if (!tasks.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-gray-400 text-center">尚無任務</td></tr>';
+                return;
+            }
+            tbody.innerHTML = tasks.map(t => `
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="toggleDetail('${t.id}')">
+                    <td class="px-4 py-3 font-medium">${t.client_name}</td>
+                    <td class="px-4 py-3">${t.job_title}</td>
+                    <td class="px-4 py-3 text-xs">${(t.primary_skills||[]).concat(t.secondary_skills||[]).join(', ')}</td>
+                    <td class="px-4 py-3 text-xs">${formatSchedule(t)}</td>
+                    <td class="px-4 py-3">${statusBadge(t.status, t.progress)}</td>
+                    <td class="px-4 py-3 flex gap-1">
+                        <button onclick="event.stopPropagation();runTask('${t.id}')" class="p-1 hover:bg-blue-100 rounded" title="立即執行">&#9654;</button>
+                        <button onclick="event.stopPropagation();deleteTask('${t.id}')" class="p-1 hover:bg-red-100 rounded" title="刪除">&#128465;</button>
+                    </td>
+                </tr>
+                <tr id="detail-${t.id}" class="hidden">
+                    <td colspan="6" class="px-4 py-3 bg-gray-50">
+                        <div class="text-sm space-y-2">
+                            <div class="flex items-center justify-between">
+                                <div>進度: <span class="font-mono">${t.progress_detail || '--'}</span></div>
+                                <button onclick="event.stopPropagation();openEditModal('${t.id}')"
+                                    class="px-3 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600 transition">
+                                    &#9998; 編輯設定
+                                </button>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="bg-blue-600 h-2 rounded-full transition-all" style="width:${t.progress||0}%"></div>
+                            </div>
+                            <div>LinkedIn: ${t.linkedin_count||0} | GitHub: ${t.github_count||0} | OCR: ${t.ocr_count||0}</div>
+                            <div>上次: ${t.last_run||'--'} (${t.last_result_count||0} 人)</div>
+                            <div class="text-xs text-gray-400">地區: ${t.location||'Taiwan'} | 頁數: ${t.pages||3}</div>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        });
+}
+
+function formatSchedule(t) {
+    if (t.schedule_type === 'once') return '手動';
+    if (t.schedule_type === 'daily') return '每日 ' + (t.schedule_time || '09:00');
+    if (t.schedule_type === 'weekly') return '每週 ' + (t.schedule_time || '09:00');
+    if (t.schedule_type === 'interval') return '每 ' + t.schedule_interval_hours + ' 小時';
+    return t.schedule_type;
+}
+
+function statusBadge(status, progress) {
+    const map = {
+        'completed': '<span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">完成</span>',
+        'running': `<span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">${progress||0}%</span>`,
+        'failed': '<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">失敗</span>',
+        'pending': '<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">等待</span>',
+        'paused': '<span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">暫停</span>',
+    };
+    return map[status] || status;
+}
+
+function toggleDetail(id) {
+    document.getElementById('detail-'+id)?.classList.toggle('hidden');
+}
+
+function runTask(id) {
+    fetch(`/api/tasks/${id}/run`, {method:'POST'}).then(() => loadTasks());
+}
+
+function deleteTask(id) {
+    if (!confirm('確定刪除此任務？')) return;
+    fetch(`/api/tasks/${id}`, {method:'DELETE'}).then(() => loadTasks());
+}
+
+// 新增任務 Modal
+function openModal() { document.getElementById('task-modal').classList.remove('hidden'); }
+function closeModal() { document.getElementById('task-modal').classList.add('hidden'); }
+
+// 編輯任務 Modal
+window._allTasksCache = [];
+function openEditModal(taskId) {
+    const task = window._allTasksCache.find(t => t.id === taskId);
+    if (!task) { alert('找不到任務'); return; }
+
+    document.getElementById('edit-task-id').value = taskId;
+    document.getElementById('edit-client').value = task.client_name || '';
+    document.getElementById('edit-job').value = task.job_title || '';
+    document.getElementById('edit-primary').value = (task.primary_skills || []).join(', ');
+    document.getElementById('edit-secondary').value = (task.secondary_skills || []).join(', ');
+    document.getElementById('edit-location').value = task.location || 'Taiwan';
+    document.getElementById('edit-pages').value = task.pages || 3;
+
+    document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+}
+
+function _getEditData() {
+    return {
+        client_name: document.getElementById('edit-client').value.trim(),
+        job_title: document.getElementById('edit-job').value.trim(),
+        primary_skills: document.getElementById('edit-primary').value.split(',').map(s => s.trim()).filter(Boolean),
+        secondary_skills: document.getElementById('edit-secondary').value.split(',').map(s => s.trim()).filter(Boolean),
+        location: document.getElementById('edit-location').value.trim(),
+        pages: parseInt(document.getElementById('edit-pages').value) || 3,
+    };
+}
+
+function saveEdit() {
+    const taskId = document.getElementById('edit-task-id').value;
+    const data = _getEditData();
+    if (!data.client_name || !data.job_title) { alert('客戶和職缺不能為空'); return; }
+
+    fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    }).then(r => r.json()).then(() => {
+        closeEditModal();
+        loadTasks();
+    });
+}
+
+function saveAndRerun() {
+    const taskId = document.getElementById('edit-task-id').value;
+    const data = _getEditData();
+    if (!data.client_name || !data.job_title) { alert('客戶和職缺不能為空'); return; }
+
+    fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    }).then(r => r.json()).then(() => {
+        return fetch(`/api/tasks/${taskId}/run`, { method: 'POST' });
+    }).then(() => {
+        closeEditModal();
+        loadTasks();
+    });
+}
+
+function toggleSourceMode() {
+    const mode = document.querySelector('input[name="source-mode"]:checked').value;
+    document.getElementById('api-mode').classList.toggle('hidden', mode !== 'api');
+    document.getElementById('manual-mode').classList.toggle('hidden', mode !== 'manual');
+}
+
+function addSkill(type) {
+    const input = document.getElementById('add-' + type);
+    const val = input.value.trim();
+    if (!val) return;
+    const arr = type === 'primary' ? primarySkills : secondarySkills;
+    arr.push(val);
+    input.value = '';
+    renderSkills(type);
+}
+
+function removeSkill(type, idx) {
+    const arr = type === 'primary' ? primarySkills : secondarySkills;
+    arr.splice(idx, 1);
+    renderSkills(type);
+}
+
+function renderSkills(type) {
+    const arr = type === 'primary' ? primarySkills : secondarySkills;
+    const container = document.getElementById(type + '-skills');
+    const input = container.querySelector('input');
+    const tags = arr.map((s, i) => `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm flex items-center gap-1">${s}<button onclick="removeSkill('${type}',${i})" class="text-blue-400 hover:text-blue-600">&times;</button></span>`).join('');
+    container.innerHTML = tags;
+    container.appendChild(input);
+}
+
+function loadSystemJobs() {
+    document.getElementById('system-jobs-status').textContent = '載入中...';
+    fetch('/api/system/jobs')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.connected) {
+                document.getElementById('system-jobs-status').innerHTML = '<span class="text-red-500">未連線 (請先在 Settings 設定 API 位址)</span>';
+                return;
+            }
+            const jobs = data.jobs || [];
+            document.getElementById('system-jobs-status').innerHTML = `<span class="text-green-600">已連線 (${jobs.length} 個職缺)</span>`;
+            const list = document.getElementById('system-jobs-list');
+            list.classList.remove('hidden');
+            list.innerHTML =
+                '<div class="mb-2 flex items-center gap-2">' +
+                    '<input id="job-search" type="text" class="border rounded px-3 py-1.5 text-sm flex-1" placeholder="搜尋客戶、職缺或關鍵字..." oninput="filterSystemJobs(this.value)">' +
+                    '<span id="job-filter-count" class="text-xs text-gray-400 whitespace-nowrap"></span>' +
+                '</div>' +
+                '<div style="max-height:320px;overflow-y:auto">' +
+                '<table class="w-full text-sm"><thead class="bg-gray-50 sticky top-0"><tr><th class="px-3 py-2 text-left w-8"><input type="checkbox" id="select-all-jobs" onclick="toggleAllJobs(this.checked)" title="全選"></th><th class="px-3 py-2 text-left">客戶</th><th class="px-3 py-2 text-left">職缺</th><th class="px-3 py-2 text-left">搜尋關鍵字</th></tr></thead><tbody>' +
+                jobs.map((j,i) => {
+                    const kw = j.search_primary || j.search_secondary
+                        ? `主:${j.search_primary||''}<br>副:${j.search_secondary||''}`
+                        : '<span class="text-orange-500">⚠ 無關鍵字 (可自動生成)</span>';
+                    return `<tr id="job-row-${i}" class="border-t hover:bg-blue-50 cursor-pointer" onclick="toggleJob(${i})"
+                        data-search="${(j.client_company||'').toLowerCase()} ${(j.position_name||'').toLowerCase()} ${(j.search_primary||'').toLowerCase()} ${(j.search_secondary||'').toLowerCase()} ${(j.key_skills||'').toLowerCase()}">
+                    <td class="px-3 py-2"><input type="checkbox" class="job-check" data-idx="${i}" onclick="event.stopPropagation();toggleJob(${i})"></td>
+                    <td class="px-3 py-2">${j.client_company||''}</td>
+                    <td class="px-3 py-2">${(j.position_name||'').replace(/\n/g,' ')}</td>
+                    <td class="px-3 py-2 text-xs text-gray-500">${kw}</td>
+                </tr>`;}).join('') + '</tbody></table></div>';
+            window._systemJobs = jobs;
+        })
+        .catch(() => {
+            document.getElementById('system-jobs-status').innerHTML = '<span class="text-red-500">連線失敗</span>';
+        });
+}
+
+function filterSystemJobs(query) {
+    const q = query.toLowerCase().trim();
+    let visible = 0;
+    const total = window._systemJobs?.length || 0;
+    for (let i = 0; i < total; i++) {
+        const row = document.getElementById('job-row-' + i);
+        if (!row) continue;
+        const text = row.getAttribute('data-search') || '';
+        const show = !q || text.includes(q);
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    }
+    const countEl = document.getElementById('job-filter-count');
+    if (countEl) {
+        countEl.textContent = q ? `${visible}/${total}` : '';
+    }
+}
+
+function toggleJob(idx) {
+    const chk = document.querySelector(`.job-check[data-idx="${idx}"]`);
+    if (!chk) return;
+    chk.checked = !chk.checked;
+    updateJobRowHighlight(idx, chk.checked);
+    updateSelectedCount();
+
+    // 最後勾選的帶入技能預覽
+    if (chk.checked) {
+        const job = window._systemJobs[idx];
+        primarySkills = (job.search_primary || '').split(',').map(s => s.trim()).filter(Boolean);
+        secondarySkills = (job.search_secondary || '').split(',').map(s => s.trim()).filter(Boolean);
+        renderSkills('primary');
+        renderSkills('secondary');
+    }
+
+    // 同步全選 checkbox
+    const allChecks = document.querySelectorAll('.job-check');
+    const allChecked = Array.from(allChecks).every(c => c.checked);
+    const selectAll = document.getElementById('select-all-jobs');
+    if (selectAll) selectAll.checked = allChecked;
+}
+
+function toggleAllJobs(checked) {
+    document.querySelectorAll('.job-check').forEach((chk, i) => {
+        chk.checked = checked;
+        updateJobRowHighlight(i, checked);
+    });
+    updateSelectedCount();
+}
+
+function updateJobRowHighlight(idx, selected) {
+    const row = document.getElementById('job-row-' + idx);
+    if (row) {
+        row.classList.toggle('bg-blue-100', selected);
+        row.classList.toggle('hover:bg-blue-50', !selected);
+    }
+}
+
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.job-check:checked').length;
+    let badge = document.getElementById('selected-count');
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.id = 'selected-count';
+        badge.className = 'ml-2 text-sm font-medium text-blue-600';
+        document.getElementById('system-jobs-status')?.appendChild(badge);
+    }
+    badge.textContent = count > 0 ? `（已選 ${count} 個）` : '';
+}
+
+async function createTask() {
+    const mode = document.querySelector('input[name="source-mode"]:checked').value;
+    const scheduleType = document.querySelector('input[name="schedule"]:checked').value;
+    const location = document.getElementById('task-location').value;
+    const pages = parseInt(document.getElementById('task-pages').value);
+    const scheduleTime = document.getElementById('schedule-time').value;
+    const intervalHours = parseInt(document.getElementById('schedule-interval').value || 6);
+    const autoPush = document.getElementById('auto-push').checked;
+    const runNow = scheduleType === 'once';
+
+    if (mode === 'api') {
+        // 收集所有勾選的職缺
+        const checkedBoxes = document.querySelectorAll('.job-check:checked');
+        if (!checkedBoxes.length) { alert('請至少勾選一個職缺'); return; }
+
+        const jobs = Array.from(checkedBoxes).map(chk => {
+            const idx = parseInt(chk.dataset.idx);
+            return window._systemJobs[idx];
+        }).filter(Boolean);
+
+        // 檢查每個職缺是否有搜尋關鍵字
+        const noSkills = jobs.filter(j => !(j.search_primary || '').trim());
+        if (noSkills.length) {
+            const action = confirm(`以下 ${noSkills.length} 個職缺沒有搜尋關鍵字：\n${noSkills.map(j => j.position_name).join('\n')}\n\n按「確定」自動生成關鍵字，按「取消」跳過這些職缺`);
+            if (action) {
+                // 自動生成關鍵字
+                for (const j of noSkills) {
+                    try {
+                        const res = await fetch('/api/keywords/generate', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ job_title: j.position_name })
+                        });
+                        const data = await res.json();
+                        if (data.primary_skills && data.primary_skills.length) {
+                            j.search_primary = data.primary_skills.join(', ');
+                            j.search_secondary = (j.search_secondary || '') + (j.search_secondary ? ',' : '') + (data.secondary_skills || []).join(', ');
+                        }
+                    } catch (e) { console.error('自動生成失敗:', j.position_name, e); }
+                }
+            }
+        }
+
+        const validJobs = jobs.filter(j => (j.search_primary || '').trim());
+        if (!validJobs.length) { alert('沒有可建立的任務（都缺少搜尋關鍵字）'); return; }
+
+        // 批次建立
+        const promises = validJobs.map(job => {
+            const ps = (job.search_primary || '').split(',').map(s => s.trim()).filter(Boolean);
+            const ss = (job.search_secondary || '').split(',').map(s => s.trim()).filter(Boolean);
+            return fetch('/api/tasks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    client_name: job.client_company || '',
+                    job_title: job.position_name || '',
+                    primary_skills: ps,
+                    secondary_skills: ss,
+                    location, pages, schedule_type: scheduleType,
+                    schedule_time: scheduleTime,
+                    schedule_interval_hours: intervalHours,
+                    step1ne_job_id: job.id,
+                    auto_push: autoPush,
+                    run_now: runNow,
+                })
+            }).then(r => r.json());
+        });
+
+        Promise.all(promises).then(results => {
+            closeModal();
+            primarySkills = []; secondarySkills = [];
+            loadTasks();
+            alert(`已建立 ${results.length} 個搜尋任務`);
+        });
+
+    } else {
+        // 手動模式：單個任務
+        const clientName = document.getElementById('manual-client').value.trim();
+        const jobTitle = document.getElementById('manual-job').value.trim();
+        if (!clientName || !jobTitle) { alert('請填寫客戶和職缺名稱'); return; }
+        if (!primarySkills.length) { alert('請至少新增一個主要技能'); return; }
+
+        fetch('/api/tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                client_name: clientName,
+                job_title: jobTitle,
+                primary_skills: primarySkills,
+                secondary_skills: secondarySkills,
+                location, pages, schedule_type: scheduleType,
+                schedule_time: scheduleTime,
+                schedule_interval_hours: intervalHours,
+                auto_push: autoPush,
+                run_now: runNow,
+            })
+        })
+        .then(r => r.json())
+        .then(() => {
+            closeModal();
+            primarySkills = []; secondarySkills = [];
+            loadTasks();
+        });
+    }
+}
+
+// 排程選項切換
+document.querySelectorAll('input[name="schedule"]').forEach(r => {
+    r.addEventListener('change', () => {
+        const v = r.value;
+        const opts = document.getElementById('schedule-options');
+        opts.classList.toggle('hidden', v === 'once');
+        document.getElementById('schedule-interval').classList.toggle('hidden', v !== 'interval');
+    });
+});
+
+// ── 自動生成關鍵字 ────────────────────────────────────
+
+function autoGenerateKeywords() {
+    // 取得職缺名稱（從手動輸入或最後選取的系統職缺）
+    const mode = document.querySelector('input[name="source-mode"]:checked').value;
+    let jobTitle = '';
+
+    if (mode === 'manual') {
+        jobTitle = document.getElementById('manual-job').value.trim();
+    } else if (window._systemJobs) {
+        // 最後勾選的職缺
+        const checked = document.querySelectorAll('.job-check:checked');
+        if (checked.length > 0) {
+            const idx = parseInt(checked[checked.length - 1].dataset.idx);
+            jobTitle = window._systemJobs[idx]?.position_name || '';
+        }
+    }
+
+    if (!jobTitle) {
+        alert('請先輸入或選擇職缺名稱');
+        return;
+    }
+
+    const btn = document.getElementById('auto-gen-btn');
+    const statusEl = document.getElementById('auto-gen-status');
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = '正在分析職缺名稱...';
+
+    fetch('/api/keywords/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            job_title: jobTitle,
+            existing_skills: primarySkills.concat(secondarySkills),
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '&#129302; 自動生成關鍵字';
+
+        if (data.error) {
+            statusEl.textContent = '生成失敗: ' + data.error;
+            statusEl.classList.add('text-red-500');
+            return;
+        }
+
+        const ps = data.primary_skills || [];
+        const ss = data.secondary_skills || [];
+
+        if (!ps.length && !ss.length) {
+            statusEl.textContent = '無法識別此職缺名稱的關鍵字，請手動輸入';
+            statusEl.classList.add('text-yellow-600');
+            return;
+        }
+
+        // 填入技能
+        primarySkills = ps;
+        secondarySkills = ss;
+        renderSkills('primary');
+        renderSkills('secondary');
+
+        statusEl.textContent = `已生成: 主要=${ps.join(', ')} | 次要=${ss.join(', ')}`;
+        statusEl.classList.remove('text-red-500', 'text-yellow-600');
+        statusEl.classList.add('text-green-600');
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '&#129302; 自動生成關鍵字';
+        statusEl.textContent = '連線錯誤';
+        statusEl.classList.add('text-red-500');
+    });
+}
+
+function autoGenerateKeywordsEdit() {
+    const jobTitle = document.getElementById('edit-job').value.trim();
+    if (!jobTitle) {
+        alert('請先輸入職缺名稱');
+        return;
+    }
+
+    const statusEl = document.getElementById('edit-auto-gen-status');
+    statusEl.classList.remove('hidden');
+    statusEl.textContent = '生成中...';
+
+    const existing = document.getElementById('edit-primary').value
+        .split(',').map(s => s.trim()).filter(Boolean)
+        .concat(document.getElementById('edit-secondary').value
+            .split(',').map(s => s.trim()).filter(Boolean));
+
+    fetch('/api/keywords/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            job_title: jobTitle,
+            existing_skills: existing,
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            statusEl.textContent = '生成失敗: ' + data.error;
+            statusEl.classList.add('text-red-500');
+            return;
+        }
+
+        const ps = data.primary_skills || [];
+        const ss = data.secondary_skills || [];
+
+        if (!ps.length && !ss.length) {
+            statusEl.textContent = '無法識別此職缺的關鍵字';
+            statusEl.classList.add('text-yellow-600');
+            return;
+        }
+
+        document.getElementById('edit-primary').value = ps.join(', ');
+        document.getElementById('edit-secondary').value = ss.join(', ');
+
+        statusEl.textContent = `已生成 ${ps.length} 主要 + ${ss.length} 次要技能`;
+        statusEl.classList.remove('text-red-500', 'text-yellow-600');
+        statusEl.classList.add('text-green-600');
+    })
+    .catch(() => {
+        statusEl.textContent = '連線錯誤';
+        statusEl.classList.add('text-red-500');
+    });
+}
+
+// 修改職缺列表 — 沒有關鍵字的職缺顯示提示
+const _origToggleJob = toggleJob;
+
+// 更新系統職缺顯示（在 loadSystemJobs 後），標記沒有關鍵字的
+function highlightNoKeywordJobs() {
+    if (!window._systemJobs) return;
+    window._systemJobs.forEach((j, i) => {
+        if (!(j.search_primary || '').trim()) {
+            const row = document.getElementById('job-row-' + i);
+            if (row) {
+                const keywordCell = row.querySelector('td:last-child');
+                if (keywordCell && !keywordCell.querySelector('.no-kw-hint')) {
+                    keywordCell.innerHTML = '<span class="text-orange-500 text-xs no-kw-hint">&#9888; 無關鍵字 (可自動生成)</span>';
+                }
+            }
+        }
+    });
+}
+
+// Hook loadSystemJobs 結束後標記
+const _origLoadSystemJobs = loadSystemJobs;
+loadSystemJobs = function() {
+    _origLoadSystemJobs();
+    setTimeout(highlightNoKeywordJobs, 1000);
+};
+
+loadTasks();
+setInterval(loadTasks, 10000);
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+# HeadHunter Crawler 依賴套件
+
+# Web 框架
+flask>=3.0
+flask-cors>=4.0
+
+# Google Sheets
+gspread>=6.0
+google-auth>=2.0
+
+# 瀏覽器自動化
+playwright>=1.40.0
+
+# 排程
+apscheduler>=3.10
+
+# 設定檔
+pyyaml>=6.0
+
+# OCR
+pytesseract>=0.3.10
+Pillow>=10.0
+
+# 瀏覽器指紋偽裝
+playwright-stealth>=1.0.6
