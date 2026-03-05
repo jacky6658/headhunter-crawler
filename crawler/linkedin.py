@@ -6,12 +6,17 @@ import logging
 import os
 import random
 import re
+import time
 from typing import Callable, Optional
 from urllib.parse import quote, unquote, urlencode
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# Google 全域冷卻期（同一程序內共用）
+_google_blocked_until = 0  # timestamp，在此之前不嘗試 Google
+_GOOGLE_COOLDOWN_SECS = 600  # 被封後冷卻 10 分鐘
 
 
 def _load_skill_synonyms() -> dict:
@@ -262,18 +267,27 @@ class LinkedInSearcher:
 
     def search_via_playwright(self, skills: list, location: str, pages: int,
                               browser=None) -> dict:
+        global _google_blocked_until
+
         if not self.enable_playwright:
-            return {'success': False, 'data': [], 'reason': 'disabled'}
+            return {'success': False, 'data': [], 'reason': 'disabled', 'google_blocked': False}
+
+        # 檢查 Google 冷卻期
+        if time.time() < _google_blocked_until:
+            remaining = int(_google_blocked_until - time.time())
+            logger.info(f"Playwright: Google 冷卻中，跳過 (剩 {remaining}s)")
+            return {'success': False, 'data': [], 'reason': 'google_cooldown', 'google_blocked': True}
 
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return {'success': False, 'data': [], 'reason': 'playwright_not_installed'}
+            return {'success': False, 'data': [], 'reason': 'playwright_not_installed', 'google_blocked': False}
 
         query = self.build_query(skills, location)
         logger.info(f"Playwright Google query: {query}")
         results = []
         seen_urls = set()
+        google_blocked = False
 
         manage_browser = browser is None
         pw_instance = None
@@ -284,7 +298,7 @@ class LinkedInSearcher:
                 pool = BrowserPool(headless=self.config.get('crawler', {}).get('headless', True))
                 browser = pool.start()
                 if not browser:
-                    return {'success': False, 'data': [], 'reason': 'browser_start_failed'}
+                    return {'success': False, 'data': [], 'reason': 'browser_start_failed', 'google_blocked': False}
 
             ctx = browser.new_context(
                 user_agent=self.ad.get_random_ua(),
@@ -312,14 +326,9 @@ class LinkedInSearcher:
                     html = page.content()
 
                     if self.ad.is_captcha_page(html):
-                        logger.warning("Playwright: Google CAPTCHA 偵測到")
-                        # 嘗試 OCR 解決 CAPTCHA
-                        if self.ocr:
-                            screenshot = page.screenshot()
-                            captcha_text = self.ocr.solve_simple_captcha(screenshot)
-                            if captcha_text:
-                                logger.info(f"OCR CAPTCHA 辨識: {captcha_text}")
-                                # TODO: 填入 CAPTCHA 表單
+                        logger.warning("Playwright: Google CAPTCHA，標記 Google 被封鎖")
+                        google_blocked = True
+                        _google_blocked_until = time.time() + _GOOGLE_COOLDOWN_SECS
                         break
 
                     page_items = self._sample(self.extract_urls_from_html(html))
@@ -342,20 +351,30 @@ class LinkedInSearcher:
 
         except Exception as e:
             logger.error(f"Playwright 失敗: {e}")
-            return {'success': False, 'data': results, 'reason': str(e)}
+            return {'success': False, 'data': results, 'reason': str(e), 'google_blocked': google_blocked}
 
         logger.info(f"Playwright LinkedIn: {len(results)} 筆")
-        return {'success': True, 'data': results}
+        return {'success': True, 'data': results, 'google_blocked': google_blocked}
 
     # ── Layer 2: Google urllib ────────────────────────────────
 
     def search_via_google(self, skills: list, location: str, pages: int) -> dict:
+        global _google_blocked_until
+
         if not self.enable_google:
-            return {'success': True, 'data': [], 'captcha': False}
+            return {'success': True, 'data': [], 'captcha': False, 'google_blocked': False}
+
+        # 檢查 Google 冷卻期
+        if time.time() < _google_blocked_until:
+            remaining = int(_google_blocked_until - time.time())
+            logger.info(f"Google urllib: 冷卻中，跳過 (剩 {remaining}s)")
+            return {'success': True, 'data': [], 'captcha': False, 'google_blocked': True}
 
         results = []
         seen_urls = set()
         captcha_detected = False
+        google_blocked = False
+        consecutive_429 = 0  # 追蹤連續 429 次數
         query = self.build_query(skills, location)
         logger.info(f"Google urllib query: {query}")
 
@@ -366,15 +385,27 @@ class LinkedInSearcher:
 
             text, status = self.ad.http_get(search_url)
             if status == 429:
-                logger.warning("Google 429，指數退避")
-                self.ad.exponential_backoff(pg)
+                consecutive_429 += 1
+                logger.warning(f"Google 429 (連續第 {consecutive_429} 次)")
+                if consecutive_429 >= 2:
+                    logger.warning(f"Google 連續 {consecutive_429} 次 429，放棄並設定 {_GOOGLE_COOLDOWN_SECS}s 冷卻期")
+                    google_blocked = True
+                    _google_blocked_until = time.time() + _GOOGLE_COOLDOWN_SECS
+                    break
+                self.ad.exponential_backoff(consecutive_429)
                 continue
             if status != 200:
                 logger.warning(f"Google HTTP {status}")
                 continue
+
+            # 成功取得頁面，重設 429 計數
+            consecutive_429 = 0
+
             if self.ad.is_captcha_page(text):
-                logger.warning("Google CAPTCHA 偵測到")
+                logger.warning("Google CAPTCHA，設定冷卻期")
                 captcha_detected = True
+                google_blocked = True
+                _google_blocked_until = time.time() + _GOOGLE_COOLDOWN_SECS
                 break
 
             page_items = self._sample(self.extract_urls_from_html(text))
@@ -388,7 +419,7 @@ class LinkedInSearcher:
                 self.on_progress(pg + 1, pages, len(results), 'linkedin_google')
 
         logger.info(f"Google LinkedIn: {len(results)} 筆")
-        return {'success': True, 'data': results, 'captcha': captcha_detected}
+        return {'success': True, 'data': results, 'captcha': captcha_detected, 'google_blocked': google_blocked}
 
     # ── Layer 3: Bing urllib ─────────────────────────────────
 
@@ -525,6 +556,7 @@ class LinkedInSearcher:
         all_data = []
         seen = set()
         source_used = []
+        google_blocked = False
 
         def add_results(items):
             for item in items:
@@ -533,32 +565,9 @@ class LinkedInSearcher:
                     seen.add(url)
                     all_data.append(item)
 
-        # Layer 1: Playwright
-        logger.info("LinkedIn: 嘗試 Playwright...")
-        pw_result = self.search_via_playwright(skills, location_zh, pages, browser)
-        add_results(pw_result.get('data', []))
-        if pw_result.get('success'):
-            source_used.append('playwright')
-            logger.info(f"Playwright: {len(all_data)} 筆")
-
-        # Layer 2: Google urllib
-        if not pw_result.get('success') or len(all_data) < self.min_results:
-            logger.info("LinkedIn: 嘗試 Google urllib...")
-            google_result = self.search_via_google(skills, location_zh, pages)
-            add_results(google_result.get('data', []))
-            source_used.append('google')
-
-            # Layer 3: Bing
-            if google_result.get('captcha') or len(all_data) < self.min_results:
-                reason = "CAPTCHA" if google_result.get('captcha') else f"結果不足({len(all_data)})"
-                logger.info(f"LinkedIn: Google {reason}，切換 Bing...")
-                bing_result = self.search_via_bing(skills, location_en, pages)
-                add_results(bing_result.get('data', []))
-                source_used.append('bing')
-
-        # Layer 4: Brave API — 主力搜尋（多組查詢策略）
+        # ── 第 1 優先: Brave API（付費 API，最穩定） ──
         if brave_key:
-            logger.info(f"LinkedIn: Brave API 搜尋 (job={job_title})...")
+            logger.info(f"LinkedIn: [1] Brave API 搜尋 (job={job_title})...")
             brave_result = self.search_via_brave(
                 skills, brave_key, location_en, pages,
                 job_title=job_title,
@@ -567,7 +576,35 @@ class LinkedInSearcher:
             )
             add_results(brave_result.get('data', []))
             source_used.append('brave')
+            logger.info(f"Brave: {len(all_data)} 筆")
+
+        # ── 第 2 優先: Bing（免費、不易被封） ──
+        if len(all_data) < self.min_results:
+            logger.info(f"LinkedIn: [2] Bing 搜尋 (目前 {len(all_data)} 筆，需 {self.min_results})...")
+            bing_result = self.search_via_bing(skills, location_en, pages)
+            add_results(bing_result.get('data', []))
+            source_used.append('bing')
+            logger.info(f"Bing 補充後: {len(all_data)} 筆")
+
+        # ── 第 3 優先: Playwright (Google) ──
+        if len(all_data) < self.min_results:
+            logger.info("LinkedIn: [3] 嘗試 Playwright...")
+            pw_result = self.search_via_playwright(skills, location_zh, pages, browser)
+            add_results(pw_result.get('data', []))
+            google_blocked = pw_result.get('google_blocked', False)
+            if pw_result.get('success'):
+                source_used.append('playwright')
+
+        # ── 第 4 優先: Google urllib — Google 沒被封才試 ──
+        if not google_blocked and len(all_data) < self.min_results:
+            logger.info("LinkedIn: [4] 嘗試 Google urllib...")
+            google_result = self.search_via_google(skills, location_zh, pages)
+            add_results(google_result.get('data', []))
+            source_used.append('google')
+            google_blocked = google_result.get('google_blocked', False)
 
         source_str = '+'.join(source_used)
+        if google_blocked:
+            logger.info(f"LinkedIn: Google 被封鎖中 (冷卻 {_GOOGLE_COOLDOWN_SECS}s)")
         logger.info(f"LinkedIn 最終 ({source_str}): {len(all_data)} 筆")
         return {'success': True, 'data': all_data, 'source': source_str}

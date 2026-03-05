@@ -317,7 +317,42 @@ def system_push():
 
     # 使用新版匯入端點（v2），由 Step1ne 端做欄位映射
     result = client.push_candidates_v2(candidates, actor='Crawler-WebUI')
-    return jsonify(result)
+
+    created = result.get('created_count', 0)
+    updated = result.get('updated_count', 0)
+    failed = result.get('failed_count', 0)
+
+    # 推送成功（至少有部分成功） → 標記候選人為「已匯入」
+    if created > 0 or updated > 0 or result.get('success'):
+        store = _get_sheets_store()
+        if store:
+            imported_count = 0
+            for c in candidates:
+                cid = c.get('id')
+                cname = c.get('client_name')
+                if cid and cname:
+                    try:
+                        store.update_candidate_status(cname, cid, 'imported')
+                        imported_count += 1
+                    except Exception as e:
+                        logger.error(f"標記已匯入失敗 ({cid}): {e}")
+            result['marked_imported'] = imported_count
+            logger.info(f"已標記 {imported_count} 位候選人為「已匯入」")
+
+    # 統一回傳格式：有部分成功就不算整體失敗
+    response = {
+        'created_count': created,
+        'updated_count': updated,
+        'failed_count': failed,
+        'marked_imported': result.get('marked_imported', 0),
+    }
+    # 只有全部失敗（沒有任何成功）才帶 error
+    if failed > 0 and created == 0 and updated == 0:
+        response['error'] = result.get('error') or result.get('errors') or f'{failed} 位候選人匯入失敗'
+    elif result.get('error') and created == 0 and updated == 0:
+        response['error'] = result['error']
+
+    return jsonify(response)
 
 
 # ── 內部：Worker 回報結果 ────────────────────────────────────
@@ -352,6 +387,15 @@ def internal_results():
 def get_settings():
     config = current_app.config.get('CRAWLER_CONFIG', {})
     # 隱藏敏感資訊
+    # 遮罩 API Keys（顯示前後幾位，讓用戶確認是哪把 key）
+    brave_key = config.get('api_keys', {}).get('brave_api_key', '')
+    github_tokens = config.get('api_keys', {}).get('github_tokens', [])
+
+    def mask_key(key, prefix=4, suffix=4):
+        if not key or len(key) < prefix + suffix + 3:
+            return '***' if key else ''
+        return key[:prefix] + '***' + key[-suffix:]
+
     safe_config = {
         'step1ne': config.get('step1ne', {}),
         'crawler': config.get('crawler', {}),
@@ -362,8 +406,10 @@ def get_settings():
             'has_credentials': bool(config.get('google_sheets', {}).get('credentials_file')),
         },
         'api_keys': {
-            'github_token_count': len(config.get('api_keys', {}).get('github_tokens', [])),
-            'has_brave_key': bool(config.get('api_keys', {}).get('brave_api_key')),
+            'github_token_count': len(github_tokens),
+            'has_brave_key': bool(brave_key),
+            'brave_key_masked': mask_key(brave_key, 4, 4),
+            'github_tokens_masked': [mask_key(t, 4, 4) for t in github_tokens],
         },
     }
     return jsonify(safe_config)
@@ -389,7 +435,25 @@ def update_settings():
             current_app.config['STEP1NE_CLIENT'] = None
 
     if 'api_keys' in data:
-        config['api_keys'] = {**config.get('api_keys', {}), **data['api_keys']}
+        existing_keys = config.get('api_keys', {})
+        new_keys = data['api_keys']
+
+        # Brave key: 只在有值時更新
+        if new_keys.get('brave_api_key'):
+            existing_keys['brave_api_key'] = new_keys['brave_api_key']
+
+        # GitHub tokens: 智慧合併
+        if 'github_tokens_new' in new_keys or 'github_tokens_keep_count' in new_keys:
+            old_tokens = existing_keys.get('github_tokens', [])
+            keep_count = new_keys.get('github_tokens_keep_count', len(old_tokens))
+            kept = old_tokens[:keep_count]
+            new_tokens = new_keys.get('github_tokens_new', [])
+            existing_keys['github_tokens'] = kept + new_tokens
+        elif 'github_tokens' in new_keys:
+            # 直接覆蓋（向後相容）
+            existing_keys['github_tokens'] = new_keys['github_tokens']
+
+        config['api_keys'] = existing_keys
 
     if 'crawler' in data:
         config['crawler'] = {**config.get('crawler', {}), **data['crawler']}

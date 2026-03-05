@@ -57,6 +57,7 @@
             <tr>
                 <th class="px-3 py-3 w-8"></th>
                 <th class="px-3 py-3 text-left text-gray-500">名稱</th>
+                <th class="px-3 py-3 text-left text-gray-500">狀態</th>
                 <th class="px-3 py-3 text-left text-gray-500">評分</th>
                 <th class="px-3 py-3 text-left text-gray-500">來源</th>
                 <th class="px-3 py-3 text-left text-gray-500">連結</th>
@@ -67,7 +68,7 @@
             </tr>
         </thead>
         <tbody id="results-body" class="divide-y">
-            <tr><td colspan="9" class="px-4 py-8 text-gray-400 text-center">載入中...</td></tr>
+            <tr><td colspan="10" class="px-4 py-8 text-gray-400 text-center">載入中...</td></tr>
         </tbody>
     </table>
 </div>
@@ -211,14 +212,17 @@ function loadResults() {
 
             const tbody = document.getElementById('results-body');
             if (!filtered.length) {
-                tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-gray-400 text-center">無結果</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-gray-400 text-center">無結果</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = filtered.map(r => `
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="showDetail(${JSON.stringify(r).replace(/"/g, '&quot;')})">
-                    <td class="px-3 py-3"><input type="checkbox" class="row-check" data-id="${r.id}" data-grade="${r.grade||''}" data-score="${r.score||0}" onclick="event.stopPropagation()"></td>
+            tbody.innerHTML = filtered.map(r => {
+                const isImported = r.status === 'imported';
+                return `
+                <tr class="hover:bg-gray-50 cursor-pointer ${isImported ? 'opacity-60' : ''}" onclick="showDetail(${JSON.stringify(r).replace(/"/g, '&quot;')})">
+                    <td class="px-3 py-3"><input type="checkbox" class="row-check" data-id="${r.id}" data-grade="${r.grade||''}" data-score="${r.score||0}" data-status="${r.status||'new'}" onclick="event.stopPropagation()" ${isImported ? 'disabled title="已匯入"' : ''}></td>
                     <td class="px-3 py-3 font-medium">${r.name||'--'}</td>
+                    <td class="px-3 py-3">${statusBadge(r.status)}</td>
                     <td class="px-3 py-3">${gradeBadge(r.score, r.grade)}</td>
                     <td class="px-3 py-3"><span class="px-2 py-0.5 text-xs rounded-full ${sourceBadgeClass(r.source)}">${r.source||'--'}</span></td>
                     <td class="px-3 py-3 text-xs">
@@ -231,9 +235,16 @@ function loadResults() {
                     <td class="px-3 py-3">${r.location||'--'}</td>
                     <td class="px-3 py-3 text-xs max-w-[200px] truncate">${r.skills||'--'}</td>
                     <td class="px-3 py-3 text-xs">${r.job_title||'--'}</td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
         });
+}
+
+function statusBadge(status) {
+    if (status === 'imported') return '<span class="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 font-medium">已匯入</span>';
+    if (status === 'reviewed') return '<span class="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-medium">已審</span>';
+    if (status === 'skipped') return '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-500 font-medium">略過</span>';
+    return '<span class="px-2 py-0.5 text-xs rounded-full bg-gray-50 text-gray-400">新</span>';
 }
 
 function sourceBadgeClass(source) {
@@ -416,7 +427,9 @@ function runOcrAnalysis() {
 
 function toggleSelectAll() {
     const checked = document.getElementById('select-all').checked;
-    document.querySelectorAll('.row-check').forEach(c => c.checked = checked);
+    document.querySelectorAll('.row-check').forEach(c => {
+        if (!c.disabled) c.checked = checked;  // 已匯入的(disabled)不勾選
+    });
 }
 
 function getSelectedIds() {
@@ -428,12 +441,13 @@ function getSelectedData() {
         id: c.dataset.id,
         grade: c.dataset.grade,
         score: parseInt(c.dataset.score) || 0,
+        status: c.dataset.status || 'new',
     }));
 }
 
 function pushSelected() {
-    const selected = getSelectedData();
-    if (!selected.length) { alert('請先勾選候選人'); return; }
+    const selected = getSelectedData().filter(s => s.status !== 'imported');
+    if (!selected.length) { alert('請先勾選候選人（已匯入的不會重複推送）'); return; }
 
     // 統計等級
     const gradeCount = {A: 0, B: 0, C: 0, D: 0};
@@ -473,13 +487,20 @@ function confirmPush() {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.error) {
+        const created = data.created_count || 0;
+        const updated = data.updated_count || 0;
+        const failed = data.failed_count || 0;
+        const marked = data.marked_imported || 0;
+
+        if (data.error && created === 0 && updated === 0) {
+            // 全部失敗
             alert('推送失敗: ' + data.error);
         } else {
-            const created = data.created_count || 0;
-            const updated = data.updated_count || 0;
-            const failed = data.failed_count || 0;
-            alert(`推送完成！\n新增: ${created} 位\n更新: ${updated} 位\n失敗: ${failed} 位`);
+            // 成功（或部分成功）
+            let msg = `推送完成！\n新增: ${created} 位\n更新: ${updated} 位`;
+            if (failed > 0) msg += `\n失敗: ${failed} 位`;
+            if (marked > 0) msg += `\n\n已標記 ${marked} 位為「已匯入」`;
+            alert(msg);
             loadResults();
         }
     })

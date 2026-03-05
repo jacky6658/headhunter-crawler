@@ -30,15 +30,25 @@
     <!-- API Keys -->
     <div class="bg-white rounded-lg shadow p-5">
         <h3 class="font-medium text-gray-800 mb-3">API Keys</h3>
-        <div class="space-y-3">
+        <div class="space-y-4">
             <div>
-                <label class="text-sm text-gray-600">GitHub Token(s)</label>
+                <div class="flex items-center gap-2 mb-1">
+                    <label class="text-sm text-gray-600">GitHub Token(s)</label>
+                    <span id="gh-status" class="text-xs px-2 py-0.5 rounded-full hidden"></span>
+                </div>
                 <div id="github-tokens" class="space-y-2 mt-1"></div>
                 <button onclick="addGithubToken()" class="text-sm text-blue-600 hover:text-blue-800 mt-1">+ 新增 Token</button>
             </div>
             <div>
-                <label class="text-sm text-gray-600">Brave Search API Key</label>
-                <input id="s-brave-key" type="password" class="w-full border rounded-lg px-3 py-2 text-sm mt-1" placeholder="BSA-xxxxx...">
+                <div class="flex items-center gap-2 mb-1">
+                    <label class="text-sm text-gray-600">Brave Search API Key</label>
+                    <span id="brave-status" class="text-xs px-2 py-0.5 rounded-full hidden"></span>
+                </div>
+                <div class="flex gap-2">
+                    <input id="s-brave-key" type="text" class="flex-1 border rounded-lg px-3 py-2 text-sm" placeholder="BSA-xxxxx...">
+                    <button onclick="toggleBraveEdit()" id="brave-edit-btn" class="text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 hidden">修改</button>
+                </div>
+                <div id="brave-current" class="text-xs text-gray-400 mt-1 hidden"></div>
             </div>
             <div>
                 <label class="text-sm text-gray-600">Google Sheets Spreadsheet ID</label>
@@ -118,7 +128,10 @@
 
 {% block scripts %}
 <script>
-let githubTokens = [];
+let githubTokens = [];       // 顯示用（遮罩值或新輸入）
+let githubTokensMasked = [];  // 原始遮罩值，用於判斷是否修改
+let braveKeyMasked = '';      // 原始遮罩值
+let braveEditing = false;     // 是否正在編輯 Brave key
 
 function loadSettings() {
     fetch('/api/settings')
@@ -138,15 +151,48 @@ function loadSettings() {
             document.getElementById('s-sheet-id').value = cfg.google_sheets?.spreadsheet_id || '';
             document.getElementById('s-creds-file').value = cfg.google_sheets?.credentials_file || 'credentials.json';
 
-            // Brave key — 有值就顯示遮罩提示
-            const hasBrave = cfg.api_keys?.has_brave_key;
-            if (hasBrave) {
-                document.getElementById('s-brave-key').placeholder = '已設定（留空不更動）';
+            // ── Brave key 狀態顯示 ──
+            const braveStatus = document.getElementById('brave-status');
+            const braveInput = document.getElementById('s-brave-key');
+            const braveEditBtn = document.getElementById('brave-edit-btn');
+            const braveCurrent = document.getElementById('brave-current');
+            braveKeyMasked = cfg.api_keys?.brave_key_masked || '';
+
+            if (cfg.api_keys?.has_brave_key && braveKeyMasked) {
+                braveStatus.textContent = '✓ 已設定';
+                braveStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700';
+                braveStatus.classList.remove('hidden');
+                braveInput.value = '';
+                braveInput.placeholder = '留空不更動，或輸入新的 Key 覆蓋';
+                braveCurrent.textContent = '目前: ' + braveKeyMasked;
+                braveCurrent.classList.remove('hidden');
+                braveEditBtn.classList.add('hidden');
+                braveEditing = false;
+            } else {
+                braveStatus.textContent = '✗ 未設定';
+                braveStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600';
+                braveStatus.classList.remove('hidden');
+                braveInput.placeholder = 'BSA-xxxxx...';
+                braveCurrent.classList.add('hidden');
+                braveEditing = true;
             }
 
-            // GitHub tokens
-            const count = cfg.api_keys?.github_token_count || 0;
-            githubTokens = new Array(count).fill('***');
+            // ── GitHub tokens 狀態顯示 ──
+            const ghStatus = document.getElementById('gh-status');
+            githubTokensMasked = cfg.api_keys?.github_tokens_masked || [];
+            const count = githubTokensMasked.length;
+
+            if (count > 0) {
+                ghStatus.textContent = `✓ ${count} 個 Token`;
+                ghStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700';
+                ghStatus.classList.remove('hidden');
+                githubTokens = [...githubTokensMasked];
+            } else {
+                ghStatus.textContent = '✗ 未設定';
+                ghStatus.className = 'text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-600';
+                ghStatus.classList.remove('hidden');
+                githubTokens = [];
+            }
             renderGithubTokens();
         });
 
@@ -162,17 +208,27 @@ function loadSettings() {
 
 function renderGithubTokens() {
     const container = document.getElementById('github-tokens');
-    container.innerHTML = githubTokens.map((t, i) => `
-        <div class="flex gap-2">
-            <input type="password" value="${t}" class="gh-token flex-1 border rounded px-3 py-1 text-sm" data-idx="${i}" placeholder="ghp_...">
-            <button onclick="removeGithubToken(${i})" class="text-red-400 hover:text-red-600 text-sm">&#128465;</button>
-        </div>
-    `).join('');
+    container.innerHTML = githubTokens.map((t, i) => {
+        const isMasked = t.includes('***') && githubTokensMasked.includes(t);
+        return `
+        <div class="flex gap-2 items-center">
+            <input type="${isMasked ? 'text' : 'password'}" value="${t}"
+                   class="gh-token flex-1 border rounded px-3 py-1 text-sm ${isMasked ? 'bg-gray-50 text-gray-500' : ''}"
+                   data-idx="${i}" placeholder="ghp_..."
+                   ${isMasked ? 'readonly onfocus="this.removeAttribute(\'readonly\');this.type=\'password\';this.value=\'\';this.classList.remove(\'bg-gray-50\',\'text-gray-500\')"' : ''}>
+            <button onclick="removeGithubToken(${i})" class="text-red-400 hover:text-red-600 text-sm px-1" title="刪除">&#128465;</button>
+        </div>`;
+    }).join('');
 }
 
 function addGithubToken() {
     githubTokens.push('');
     renderGithubTokens();
+    // 聚焦到新加的 input
+    setTimeout(() => {
+        const inputs = document.querySelectorAll('.gh-token');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+    }, 50);
 }
 
 function removeGithubToken(idx) {
@@ -180,12 +236,19 @@ function removeGithubToken(idx) {
     renderGithubTokens();
 }
 
+function toggleBraveEdit() {
+    const input = document.getElementById('s-brave-key');
+    braveEditing = true;
+    input.value = '';
+    input.placeholder = '輸入新的 Brave API Key';
+    input.focus();
+}
+
 function testConnection() {
     const url = document.getElementById('s-api-url').value;
     if (!url) { alert('請先輸入 API 位址'); return; }
     document.getElementById('connection-status').innerHTML = '<span class="text-gray-500">測試中...</span>';
 
-    // 先儲存 URL，再測試
     fetch('/api/settings', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -197,27 +260,55 @@ function testConnection() {
     .then(data => {
         if (data.connected) {
             document.getElementById('connection-status').innerHTML =
-                `<span class="text-green-600">已連線 (${data.job_count} 個職缺)</span>`;
+                `<span class="text-green-600">✓ 已連線 (${data.job_count} 個職缺)</span>`;
         } else {
             document.getElementById('connection-status').innerHTML =
-                `<span class="text-red-500">連線失敗: ${data.error || '未知錯誤'}</span>`;
+                `<span class="text-red-500">✗ 連線失敗: ${data.error || '未知錯誤'}</span>`;
         }
     })
     .catch(() => {
         document.getElementById('connection-status').innerHTML =
-            '<span class="text-red-500">連線失敗</span>';
+            '<span class="text-red-500">✗ 連線失敗</span>';
     });
 }
 
 function saveSettings() {
-    const tokens = [...document.querySelectorAll('.gh-token')]
-        .map(el => el.value.trim())
-        .filter(t => t && t !== '***');
-
+    // ── 收集 API Keys（只傳有改動的） ──
     const apiKeys = {};
+
+    // Brave key: 只在使用者實際輸入新值時才傳送
     const braveKey = document.getElementById('s-brave-key').value.trim();
-    if (braveKey) apiKeys.brave_api_key = braveKey;  // 留空 = 不更動
-    if (tokens.length) apiKeys.github_tokens = tokens;
+    if (braveKey) {
+        apiKeys.brave_api_key = braveKey;
+    }
+
+    // GitHub tokens: 收集所有非遮罩的 token
+    const tokenInputs = [...document.querySelectorAll('.gh-token')];
+    const newTokens = tokenInputs
+        .map(el => el.value.trim())
+        .filter(t => t && !githubTokensMasked.includes(t));  // 排除遮罩值
+
+    // 如果有全新的 token 輸入，或有 token 被刪除
+    const currentCount = tokenInputs.length;
+    const originalCount = githubTokensMasked.length;
+    const hasRemovedTokens = currentCount < originalCount;
+    const hasNewTokens = newTokens.length > 0;
+
+    if (hasNewTokens || hasRemovedTokens) {
+        // 組合：保留未修改的遮罩 token（代表原始值要保留） + 新 token
+        // 但因為 server 端不能解析遮罩值，需要標記哪些是 "keep"
+        // 實際做法：只傳 new tokens，server 端用 _merge 策略
+        if (hasNewTokens) {
+            apiKeys.github_tokens_new = newTokens;
+        }
+        if (hasRemovedTokens) {
+            // 告訴 server 現在應該保留幾個舊的 token
+            const keptMasked = tokenInputs
+                .map(el => el.value.trim())
+                .filter(t => githubTokensMasked.includes(t));
+            apiKeys.github_tokens_keep_count = keptMasked.length;
+        }
+    }
 
     const settings = {
         step1ne: {
@@ -245,6 +336,7 @@ function saveSettings() {
             credentials_file: document.getElementById('s-creds-file').value.trim(),
         },
     };
+
     fetch('/api/settings', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -252,8 +344,12 @@ function saveSettings() {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.success) alert('設定已儲存');
-        else alert('儲存失敗: ' + (data.error || ''));
+        if (data.success) {
+            alert('設定已儲存');
+            loadSettings();  // 重新載入以更新狀態 badge
+        } else {
+            alert('儲存失敗: ' + (data.error || ''));
+        }
     });
 }
 
