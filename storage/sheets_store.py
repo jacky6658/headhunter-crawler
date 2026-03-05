@@ -38,6 +38,7 @@ class SheetsStore:
         self.spreadsheet = self.gc.open_by_key(spreadsheet_id)
         self.processed_sheet_name = processed_sheet_name
         self._write_lock = threading.Lock()
+        self._header_checked = set()  # 已升級過 header 的工作表（避免重複讀取）
 
         # 確保「已處理紀錄」分頁存在
         self._ensure_processed_sheet()
@@ -71,6 +72,10 @@ class SheetsStore:
 
     def _ensure_score_headers(self, ws):
         """確保工作表有 score/grade/score_detail 欄位（舊表升級）"""
+        # 每個工作表只檢查一次，避免大量 API 讀取導致 429
+        if ws.title in self._header_checked:
+            return
+        self._header_checked.add(ws.title)
         try:
             header_row = ws.row_values(1)
             expected = Candidate.sheets_header()

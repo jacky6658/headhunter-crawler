@@ -109,12 +109,27 @@ class AntiDetect:
             ]
 
     def _create_ssl_context(self) -> ssl.SSLContext:
-        ctx = ssl.create_default_context()
         if not self.ssl_verify:
+            ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             logger.warning("SSL 驗證已停用")
-        return ctx
+            return ctx
+        # 嘗試建立正常 SSL context，若系統憑證有問題則自動降級
+        try:
+            ctx = ssl.create_default_context()
+            # 測試能否正常使用（有些 Mac 缺少系統憑證）
+            import urllib.request
+            test_req = urllib.request.Request('https://www.google.com',
+                                              method='HEAD')
+            urllib.request.urlopen(test_req, timeout=5, context=ctx)
+            return ctx
+        except Exception as e:
+            logger.warning(f"SSL 憑證驗證失敗，自動降級為不驗證模式: {e}")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return ctx
 
     # ── UA & Headers ─────────────────────────────────────────
 
