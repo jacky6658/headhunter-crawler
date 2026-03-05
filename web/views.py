@@ -21,6 +21,11 @@ def results():
     return render_template('results.html')
 
 
+@web_bp.route('/logs')
+def logs():
+    return render_template('logs.html')
+
+
 @web_bp.route('/settings')
 def settings():
     return render_template('settings.html')

@@ -809,3 +809,58 @@ def dashboard_stats():
         ]
 
     return jsonify(stats)
+
+
+# ── Logs API ──────────────────────────────────────────────────
+
+@api_bp.route('/logs')
+def get_logs():
+    """讀取系統日誌"""
+    lines = request.args.get('lines', 200, type=int)
+    level = request.args.get('level', 'all')  # all / error / warning
+    search = request.args.get('search', '')
+
+    log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs', 'crawler.log')
+
+    if not os.path.exists(log_file):
+        return jsonify({'logs': [], 'total': 0, 'file': log_file, 'error': '日誌檔案不存在'})
+
+    try:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            all_lines = f.readlines()
+
+        # 篩選等級
+        if level == 'error':
+            all_lines = [l for l in all_lines if 'ERROR' in l or 'CRITICAL' in l or 'Exception' in l or 'Traceback' in l]
+        elif level == 'warning':
+            all_lines = [l for l in all_lines if 'WARNING' in l or 'ERROR' in l or 'CRITICAL' in l]
+
+        # 搜索過濾
+        if search:
+            search_lower = search.lower()
+            all_lines = [l for l in all_lines if search_lower in l.lower()]
+
+        # 取最後 N 行
+        total = len(all_lines)
+        result_lines = all_lines[-lines:]
+
+        return jsonify({
+            'logs': [l.rstrip('\n') for l in result_lines],
+            'total': total,
+            'showing': len(result_lines),
+            'file': log_file,
+        })
+    except Exception as e:
+        return jsonify({'logs': [], 'total': 0, 'error': str(e)}), 500
+
+
+@api_bp.route('/logs/clear', methods=['POST'])
+def clear_logs():
+    """清空日誌檔案"""
+    log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs', 'crawler.log')
+    try:
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write('')
+        return jsonify({'success': True, 'message': '日誌已清空'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

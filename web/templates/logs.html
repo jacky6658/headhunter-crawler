@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Logs - HeadHunter Crawler{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- 標題 + 控制列 -->
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-800">&#128220; 系統日誌</h1>
+        <div class="flex items-center gap-2">
+            <span id="log-info" class="text-sm text-gray-500"></span>
+            <button onclick="loadLogs()" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">&#128260; 重新載入</button>
+            <button onclick="toggleAutoRefresh()" id="auto-refresh-btn" class="bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm hover:bg-gray-300">&#9654; 自動更新</button>
+            <button onclick="clearLogs()" class="bg-red-100 text-red-600 px-3 py-1.5 rounded text-sm hover:bg-red-200">&#128465; 清空日誌</button>
+        </div>
+    </div>
+
+    <!-- 篩選列 -->
+    <div class="bg-white rounded-lg shadow p-3 flex items-center gap-3">
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">等級：</label>
+            <select id="log-level" onchange="loadLogs()" class="border rounded px-2 py-1 text-sm">
+                <option value="all">全部</option>
+                <option value="warning">Warning+</option>
+                <option value="error">Error only</option>
+            </select>
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-600">行數：</label>
+            <select id="log-lines" onchange="loadLogs()" class="border rounded px-2 py-1 text-sm">
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+            </select>
+        </div>
+        <div class="flex-1">
+            <input id="log-search" type="text" placeholder="搜尋日誌內容..."
+                   class="w-full border rounded px-3 py-1 text-sm"
+                   onkeydown="if(event.key==='Enter') loadLogs()">
+        </div>
+        <button onclick="loadLogs()" class="bg-gray-100 px-3 py-1 rounded text-sm hover:bg-gray-200">搜尋</button>
+    </div>
+
+    <!-- 日誌內容 -->
+    <div class="bg-gray-900 rounded-lg shadow overflow-hidden">
+        <div id="log-container" class="p-4 overflow-x-auto overflow-y-auto font-mono text-xs leading-5" style="max-height: 70vh; min-height: 400px;">
+            <div class="text-gray-400">載入中...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshTimer = null;
+let isAutoRefresh = false;
+
+function loadLogs() {
+    const level = document.getElementById('log-level').value;
+    const lines = document.getElementById('log-lines').value;
+    const search = document.getElementById('log-search').value;
+
+    const params = new URLSearchParams({ level, lines, search });
+    fetch(`/api/logs?${params}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error && !data.logs.length) {
+                document.getElementById('log-container').innerHTML =
+                    `<div class="text-yellow-400">⚠ ${data.error}</div>`;
+                document.getElementById('log-info').textContent = '';
+                return;
+            }
+
+            const container = document.getElementById('log-container');
+            if (!data.logs.length) {
+                container.innerHTML = '<div class="text-gray-400">沒有符合條件的日誌</div>';
+                document.getElementById('log-info').textContent = '0 行';
+                return;
+            }
+
+            container.innerHTML = data.logs.map(line => {
+                let cls = 'text-gray-300';
+                if (line.includes('ERROR') || line.includes('CRITICAL') || line.includes('Exception')) {
+                    cls = 'text-red-400';
+                } else if (line.includes('WARNING')) {
+                    cls = 'text-yellow-400';
+                } else if (line.includes('INFO')) {
+                    cls = 'text-green-300';
+                } else if (line.includes('DEBUG')) {
+                    cls = 'text-gray-500';
+                }
+                // Highlight search term
+                let display = escapeHtml(line);
+                if (search) {
+                    const regex = new RegExp(`(${escapeRegex(search)})`, 'gi');
+                    display = display.replace(regex, '<span class="bg-yellow-600 text-white px-0.5 rounded">$1</span>');
+                }
+                return `<div class="${cls} hover:bg-gray-800 px-1">${display}</div>`;
+            }).join('');
+
+            // 自動滾到底部
+            container.scrollTop = container.scrollHeight;
+
+            document.getElementById('log-info').textContent =
+                `顯示 ${data.showing} / ${data.total} 行`;
+        })
+        .catch(err => {
+            document.getElementById('log-container').innerHTML =
+                `<div class="text-red-400">載入失敗: ${err.message}</div>`;
+        });
+}
+
+function clearLogs() {
+    if (!confirm('確定要清空所有日誌嗎？')) return;
+    fetch('/api/logs/clear', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadLogs();
+            } else {
+                alert('清空失敗: ' + data.error);
+            }
+        });
+}
+
+function toggleAutoRefresh() {
+    const btn = document.getElementById('auto-refresh-btn');
+    if (isAutoRefresh) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+        isAutoRefresh = false;
+        btn.textContent = '▶ 自動更新';
+        btn.className = 'bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm hover:bg-gray-300';
+    } else {
+        loadLogs();
+        autoRefreshTimer = setInterval(loadLogs, 3000);
+        isAutoRefresh = true;
+        btn.textContent = '⏸ 停止更新';
+        btn.className = 'bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// 頁面載入時自動載入日誌
+loadLogs();
+</script>
+{% endblock %}
