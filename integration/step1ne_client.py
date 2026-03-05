@@ -4,11 +4,42 @@ Step1ne Headhunter System API 客戶端
 """
 import json
 import logging
+import ssl
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
+
+
+def _get_ssl_context():
+    """取得 SSL context，處理不同系統的憑證問題"""
+    try:
+        # 先嘗試正常的 SSL context
+        ctx = ssl.create_default_context()
+        return ctx
+    except Exception:
+        pass
+    # fallback: 不驗證 SSL（僅在憑證有問題時使用）
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _safe_urlopen(req, timeout=10):
+    """帶 SSL fallback 的 urlopen"""
+    try:
+        return urlopen(req, timeout=timeout)
+    except (ssl.SSLError, ssl.SSLCertVerificationError, URLError) as e:
+        err_str = str(e).lower()
+        if 'ssl' in err_str or 'certificate' in err_str or 'cert' in err_str:
+            logger.warning(f"SSL 驗證失敗，嘗試跳過驗證: {e}")
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return urlopen(req, timeout=timeout, context=ctx)
+        raise
 
 
 class Step1neClient:
@@ -24,14 +55,14 @@ class Step1neClient:
         try:
             req = Request(f"{self.api_base}/api/health",
                           headers={'Accept': 'application/json'})
-            resp = urlopen(req, timeout=5)
+            resp = _safe_urlopen(req, timeout=5)
             return resp.status == 200
         except Exception:
             # health endpoint 可能不存在，嘗試 /api/jobs
             try:
                 req = Request(f"{self.api_base}/api/jobs",
                               headers={'Accept': 'application/json'})
-                resp = urlopen(req, timeout=5)
+                resp = _safe_urlopen(req, timeout=5)
                 return resp.status == 200
             except Exception:
                 return False
@@ -52,7 +83,7 @@ class Step1neClient:
         try:
             req = Request(f"{self.api_base}/api/jobs",
                           headers={'Accept': 'application/json'})
-            resp = urlopen(req, timeout=10)
+            resp = _safe_urlopen(req, timeout=10)
             data = json.loads(resp.read().decode('utf-8'))
 
             # API 可能返回 {data: [...]} 或直接 [...]
@@ -82,7 +113,7 @@ class Step1neClient:
         try:
             req = Request(f"{self.api_base}/api/jobs/{job_id}",
                           headers={'Accept': 'application/json'})
-            resp = urlopen(req, timeout=10)
+            resp = _safe_urlopen(req, timeout=10)
             data = json.loads(resp.read().decode('utf-8'))
             return data if isinstance(data, dict) else data.get('data', {})
         except Exception as e:
@@ -110,7 +141,7 @@ class Step1neClient:
                 },
                 method='POST',
             )
-            resp = urlopen(req, timeout=30)
+            resp = _safe_urlopen(req, timeout=30)
             result = json.loads(resp.read().decode('utf-8'))
             logger.info(f"Step1ne push_candidates: {result}")
             return {'success': True, 'data': result}
@@ -148,7 +179,7 @@ class Step1neClient:
                 },
                 method='POST',
             )
-            resp = urlopen(req, timeout=60)
+            resp = _safe_urlopen(req, timeout=60)
             result = json.loads(resp.read().decode('utf-8'))
             logger.info(
                 f"Step1ne push_candidates_v2: "

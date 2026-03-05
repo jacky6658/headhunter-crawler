@@ -255,8 +255,24 @@ def system_jobs():
     client = _get_step1ne_client()
     if not client:
         return jsonify({'error': 'Step1ne 系統未連結', 'connected': False}), 503
-    jobs = client.fetch_jobs()
-    return jsonify({'connected': True, 'jobs': jobs})
+    try:
+        jobs = client.fetch_jobs(status='all')
+        if not jobs:
+            # 嘗試 test_connection 確認是否真的連線成功
+            test = client.test_connection()
+            if not test.get('connected'):
+                return jsonify({
+                    'connected': False,
+                    'error': f"無法連線: {test.get('error', '未知錯誤')}",
+                    'api_base': client.api_base,
+                }), 503
+        return jsonify({'connected': True, 'jobs': jobs})
+    except Exception as e:
+        return jsonify({
+            'connected': False,
+            'error': f'載入職缺失敗: {str(e)}',
+            'api_base': client.api_base,
+        }), 500
 
 
 @api_bp.route('/system/test')
