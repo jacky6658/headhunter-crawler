@@ -358,6 +358,7 @@ def get_settings():
         'anti_detect': config.get('anti_detect', {}),
         'google_sheets': {
             'spreadsheet_id': config.get('google_sheets', {}).get('spreadsheet_id', ''),
+            'credentials_file': config.get('google_sheets', {}).get('credentials_file', 'credentials.json'),
             'has_credentials': bool(config.get('google_sheets', {}).get('credentials_file')),
         },
         'api_keys': {
