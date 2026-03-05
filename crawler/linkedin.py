@@ -137,14 +137,15 @@ class LinkedInSearcher:
             if en_title:
                 queries.append(f'site:linkedin.com/in/ "{en_title}" {loc_part}')
 
-        # 查詢 2: 主技能 用 OR (寬鬆)
+        # 查詢 2: 主技能 用 OR (寬鬆) — 限制同義詞數量避免查詢過長
         if primary_skills:
             all_terms = []
             for skill in primary_skills:
-                for s in self.expand_skill_synonyms(skill):
+                for s in self.expand_skill_synonyms(skill)[:3]:  # 每個技能最多 3 個同義詞
                     t = f'"{s}"'
                     if t not in all_terms:
                         all_terms.append(t)
+            all_terms = all_terms[:10]  # 總計最多 10 個 OR 項
             skill_part = ' OR '.join(all_terms)
             queries.append(f'site:linkedin.com/in/ ({skill_part}) {loc_part}')
 
@@ -156,8 +157,8 @@ class LinkedInSearcher:
         # 查詢 4: 主技能 + 次技能混合
         if secondary_skills:
             sec_terms = []
-            for skill in secondary_skills[:4]:
-                for s in self.expand_skill_synonyms(skill):
+            for skill in secondary_skills[:3]:  # 最多取 3 個次技能
+                for s in self.expand_skill_synonyms(skill)[:2]:  # 每個最多 2 個同義詞
                     t = f'"{s}"'
                     if t not in sec_terms:
                         sec_terms.append(t)
@@ -451,6 +452,10 @@ class LinkedInSearcher:
         pages_per_query = max(2, pages)  # 每組至少查 2 頁
 
         for qi, query in enumerate(queries):
+            # Brave API 查詢長度限制 ~400 字元，超過會 422
+            if len(query) > 400:
+                logger.info(f"Brave [{qi+1}/{len(queries)}]: 查詢過長 ({len(query)} chars)，截斷")
+                query = query[:400].rsplit(' OR ', 1)[0] + ')'
             logger.info(f"Brave [{qi+1}/{len(queries)}]: {query}")
             for pg in range(pages_per_query):
                 params = urlencode({'q': query, 'count': 20, 'offset': pg * 20})
