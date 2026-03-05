@@ -11,7 +11,7 @@
 - **排程管理**：APScheduler 支援每日/每週/間隔/一次性任務
 - **併發執行**：多任務同時爬取不同職缺
 - **反偵測**：30+ UA 輪換、代理支援、指數退避、playwright-stealth
-- **Web UI**：Dashboard 總覽、任務管理、結果瀏覽、設定頁面
+- **Web UI**：Dashboard 總覽、任務管理、結果瀏覽、系統日誌、設定頁面
 - **Step1ne 系統整合（可選）**：
   - 從系統 API 匯入職缺
   - 爬蟲儀表板一鍵批量匯入候選人到系統
@@ -26,7 +26,7 @@
 ### 1. Clone + 安裝
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/jacky6658/headhunter-crawler.git
 cd headhunter-crawler
 
 python -m venv venv
@@ -56,6 +56,16 @@ python app.py
 ```
 
 開啟瀏覽器訪問 `http://localhost:5000`
+
+**背景執行（關掉終端機也不會停）：**
+```bash
+nohup python3 app.py > logs/server.log 2>&1 &
+```
+
+停止背景服務：
+```bash
+pkill -f "python3 app.py"
+```
 
 > **API Key、credentials.json、Google Sheets 設定已在倉庫中，clone 下來直接能用。**
 
@@ -98,6 +108,7 @@ python app.py
 3. 點擊「立即執行」或設定排程
 4. **Dashboard** — 監控執行進度
 5. **Results** — 瀏覽、篩選、匯出候選人
+6. **Logs** — 查看系統日誌、篩選錯誤、即時更新
 
 ### 匯入候選人到 Step1ne 系統
 
@@ -181,6 +192,8 @@ headhunter-crawler/
 | `/api/dashboard/stats` | GET | Dashboard 統計 |
 | `/api/score/candidates` | POST | 評分候選人 |
 | `/api/score/detail/:id` | GET | 評分細項 |
+| `/api/logs` | GET | 系統日誌（支援等級篩選、搜尋） |
+| `/api/logs/clear` | POST | 清空日誌 |
 
 ## AI Agent 整合
 
