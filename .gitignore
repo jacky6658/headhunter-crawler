@@ -39,10 +39,7 @@ htmlcov/
 # ── Claude ──
 .claude/
 
-# ── 注意 ──
-# credentials.json 和 config/default.yaml 含 API Key
-# 目前為內部共用所以納入版控
-# 若改為公開倉庫，請取消以下註解：
-# credentials.json
-# *.pem
-# *.key
+# ── 機密檔案（公開倉庫，不納入版控） ──
+credentials.json
+*.pem
+*.key
