@@ -39,7 +39,6 @@ htmlcov/
 # ── Claude ──
 .claude/
 
-# ── 機密檔案（公開倉庫，不納入版控） ──
-credentials.json
-*.pem
-*.key
+# ── 注意 ──
+# credentials.json 和 config/default.yaml 含 API Key
+# 內部共用倉庫（Private），納入版控方便同事使用
