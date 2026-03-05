@@ -17,6 +17,7 @@
   - 爬蟲儀表板一鍵批量匯入候選人到系統
   - 任務完成後自動推送（auto-push）
   - OpenClaw 等外部工具可直接呼叫 API 匯入
+- **AI Agent 整合**：提供完整 REST API + OpenAPI 規格，任何 AI 工具可直接呼叫
 
 ---
 
@@ -180,6 +181,16 @@ headhunter-crawler/
 | `/api/dashboard/stats` | GET | Dashboard 統計 |
 | `/api/score/candidates` | POST | 評分候選人 |
 | `/api/score/detail/:id` | GET | 評分細項 |
+
+## AI Agent 整合
+
+如果你要讓 AI（Ollama、OpenWebUI、Dify 等）自動操作爬蟲系統，請參考：
+
+- **[AI 整合指南](docs/AI-INTEGRATION.md)** — 給 AI 閱讀的完整操作文檔
+- **[OpenAPI 規格](docs/openapi.yaml)** — 標準 API 規格，可匯入任何 AI 工具
+- **[API 文檔](docs/API.md)** — 完整 API 文檔
+
+> 只要把 `docs/AI-INTEGRATION.md` 的內容貼到 AI 的系統提示詞（System Prompt），AI 就知道怎麼操作爬蟲系統。
 
 ## 測試
 

@@ -1,0 +1,472 @@
+openapi: 3.0.3
+info:
+  title: HeadHunter Crawler API
+  description: |
+    獵頭爬蟲系統 API — 搜尋 LinkedIn/GitHub 候選人，評分並匯入 Step1ne 獵頭系統。
+
+    ## AI 整合指南
+    此 API 可被 AI Agent 呼叫，自動化完成以下流程：
+    1. 取得系統職缺列表 → 了解要搜什麼人
+    2. 建立爬蟲任務 → 設定搜索關鍵字
+    3. 啟動任務 → 爬蟲開始搜索
+    4. 查看結果 → 取得候選人列表
+    5. 評分 → 對候選人打分
+    6. 推送到系統 → 匯入 Step1ne 獵頭系統
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5000/api
+    description: 本地爬蟲系統
+  - url: https://backendstep1ne.zeabur.app/api
+    description: Step1ne 雲端系統（僅用於匯入/查詢職缺）
+
+paths:
+  # ── 健康檢查 ──
+  /health:
+    get:
+      operationId: healthCheck
+      summary: 健康檢查
+      tags: [系統]
+      responses:
+        '200':
+          description: 系統正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  # ── 系統職缺 ──
+  /system/jobs:
+    get:
+      operationId: getSystemJobs
+      summary: 取得 Step1ne 系統中的職缺列表
+      description: 取得所有活躍職缺，用於決定要搜什麼候選人
+      tags: [Step1ne 整合]
+      responses:
+        '200':
+          description: 職缺列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected: { type: boolean }
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, description: 職缺 ID }
+                        position_name: { type: string, description: 職缺名稱 }
+                        client_company: { type: string, description: 客戶公司 }
+                        key_skills: { type: string, description: 關鍵技能 }
+                        job_status: { type: string, description: "狀態（招募中/開放中/暫停等）" }
+                        search_primary: { type: string, description: 主搜索關鍵字 }
+                        search_secondary: { type: string, description: 次搜索關鍵字 }
+
+  /system/test:
+    get:
+      operationId: testSystemConnection
+      summary: 測試 Step1ne 系統連線狀態
+      tags: [Step1ne 整合]
+      responses:
+        '200':
+          description: 連線狀態
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected: { type: boolean }
+                  api_base: { type: string }
+                  job_count: { type: integer }
+
+  # ── 任務管理 ──
+  /tasks:
+    get:
+      operationId: listTasks
+      summary: 列出所有爬蟲任務
+      tags: [任務管理]
+      responses:
+        '200':
+          description: 任務列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: '#/components/schemas/Task' }
+
+    post:
+      operationId: createTask
+      summary: 建立爬蟲搜尋任務
+      description: |
+        建立一個新的爬蟲任務。需提供客戶名、職缺名、搜索關鍵字。
+        可選設定排程類型和 Step1ne 職缺 ID。
+      tags: [任務管理]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_name, job_title, primary_skills]
+              properties:
+                client_name: { type: string, description: "客戶名稱", example: "台積電" }
+                job_title: { type: string, description: "職缺名稱", example: "BIM工程師" }
+                primary_skills:
+                  type: array
+                  items: { type: string }
+                  description: "主要搜索關鍵字（AND 邏輯）"
+                  example: ["BIM", "Revit"]
+                secondary_skills:
+                  type: array
+                  items: { type: string }
+                  description: "次要搜索關鍵字（OR 邏輯）"
+                  example: ["AutoCAD", "Navisworks"]
+                location: { type: string, default: "Taiwan", description: "搜索地區" }
+                pages: { type: integer, default: 3, description: "搜索頁數 (1-10)" }
+                schedule_type: { type: string, enum: [once, interval, daily, weekly], default: once }
+                step1ne_job_id: { type: integer, description: "對應的 Step1ne 職缺 ID" }
+                auto_push: { type: boolean, default: false, description: "完成後自動推送到系統" }
+      responses:
+        '201':
+          description: 任務建立成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: '#/components/schemas/Task' }
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      summary: 查看任務狀態
+      description: 取得單一任務的詳細資訊和執行狀態
+      tags: [任務管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 任務詳情
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: '#/components/schemas/Task' }
+
+    put:
+      operationId: updateTask
+      summary: 更新任務設定
+      tags: [任務管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                primary_skills: { type: array, items: { type: string } }
+                secondary_skills: { type: array, items: { type: string } }
+                pages: { type: integer }
+                schedule_type: { type: string }
+      responses:
+        '200':
+          description: 更新成功
+
+    delete:
+      operationId: deleteTask
+      summary: 刪除任務
+      tags: [任務管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 刪除成功
+
+  /tasks/{id}/start:
+    post:
+      operationId: startTask
+      summary: 啟動爬蟲任務
+      description: 開始執行爬蟲搜索。任務會在背景執行，用 GET /tasks/{id} 查看進度。
+      tags: [任務管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 任務已啟動
+
+  /tasks/{id}/stop:
+    post:
+      operationId: stopTask
+      summary: 停止執行中的任務
+      tags: [任務管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 任務已停止
+
+  # ── 候選人 ──
+  /candidates:
+    get:
+      operationId: listCandidates
+      summary: 列出爬蟲找到的候選人
+      description: 取得所有爬蟲搜索到的候選人，支援篩選
+      tags: [候選人]
+      parameters:
+        - name: task_id
+          in: query
+          schema: { type: string }
+          description: 篩選特定任務的候選人
+        - name: grade
+          in: query
+          schema: { type: string, enum: [A, B, C, D] }
+          description: 篩選特定等級
+        - name: source
+          in: query
+          schema: { type: string, enum: [linkedin, github, "li+ocr"] }
+          description: 篩選來源
+        - name: client_name
+          in: query
+          schema: { type: string }
+          description: 篩選客戶
+      responses:
+        '200':
+          description: 候選人列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Candidate' }
+
+  /candidates/{id}:
+    get:
+      operationId: getCandidate
+      summary: 取得候選人詳細資料
+      tags: [候選人]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 候選人資料
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Candidate' }
+
+  # ── 評分 ──
+  /scoring/rescore:
+    post:
+      operationId: rescoreCandidates
+      summary: 重新評分候選人
+      description: 根據指定職缺的技能需求對候選人重新評分
+      tags: [評分]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task_id: { type: string, description: "任務 ID（評分該任務的候選人）" }
+                job_title: { type: string, description: "職缺名稱（用於技能匹配）" }
+      responses:
+        '200':
+          description: 評分完成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rescored: { type: integer, description: 已評分數量 }
+
+  # ── 關鍵字生成 ──
+  /keywords/generate:
+    post:
+      operationId: generateKeywords
+      summary: 從職缺名稱自動生成搜索關鍵字
+      description: AI 輔助分析職缺名稱，產生適合的搜索關鍵字
+      tags: [關鍵字]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_title]
+              properties:
+                job_title: { type: string, example: "BIM工程師" }
+      responses:
+        '200':
+          description: 生成的關鍵字
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  primary: { type: array, items: { type: string } }
+                  secondary: { type: array, items: { type: string } }
+
+  # ── 推送到 Step1ne ──
+  /system/push:
+    post:
+      operationId: pushToSystem
+      summary: 推送候選人到 Step1ne 獵頭系統
+      description: |
+        將爬蟲找到的候選人推送到 Step1ne 系統。
+        可選擇推送特定候選人或按篩選條件批量推送。
+      tags: [Step1ne 整合]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                candidate_ids:
+                  type: array
+                  items: { type: string }
+                  description: "指定候選人 ID（為空則推送全部）"
+                min_grade:
+                  type: string
+                  enum: [A, B, C, D]
+                  description: "最低等級篩選"
+                  default: D
+                task_id:
+                  type: string
+                  description: "篩選特定任務的候選人"
+                client_name:
+                  type: string
+                  description: "篩選特定客戶"
+      responses:
+        '200':
+          description: 推送結果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  created_count: { type: integer }
+                  updated_count: { type: integer }
+                  failed_count: { type: integer }
+
+  # ── Dashboard 統計 ──
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      summary: 取得爬蟲系統統計數據
+      tags: [統計]
+      responses:
+        '200':
+          description: 統計數據
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_candidates: { type: integer }
+                  total_tasks: { type: integer }
+                  grade_distribution: { type: object }
+                  source_distribution: { type: object }
+
+  # ── 設定 ──
+  /settings:
+    get:
+      operationId: getSettings
+      summary: 取得系統設定
+      tags: [設定]
+      responses:
+        '200':
+          description: 設定內容
+
+    put:
+      operationId: updateSettings
+      summary: 更新系統設定
+      tags: [設定]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step1ne:
+                  type: object
+                  properties:
+                    api_base_url: { type: string, description: "Step1ne 系統 API 位址" }
+                    auto_push: { type: boolean }
+      responses:
+        '200':
+          description: 更新成功
+
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        id: { type: string, description: 任務 ID }
+        client_name: { type: string, description: 客戶名稱 }
+        job_title: { type: string, description: 職缺名稱 }
+        primary_skills: { type: array, items: { type: string } }
+        secondary_skills: { type: array, items: { type: string } }
+        location: { type: string }
+        pages: { type: integer }
+        step1ne_job_id: { type: integer, description: "對應的 Step1ne 職缺 ID" }
+        auto_push: { type: boolean }
+        status:
+          type: string
+          enum: [pending, running, completed, failed, paused]
+          description: "任務狀態"
+        progress: { type: integer, description: "進度 0-100" }
+        progress_detail: { type: string, description: "進度描述" }
+        last_result_count: { type: integer, description: "最近一次搜索結果數" }
+        linkedin_count: { type: integer }
+        github_count: { type: integer }
+        schedule_type: { type: string, enum: [once, interval, daily, weekly] }
+
+    Candidate:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        source: { type: string, enum: [linkedin, github, "li+ocr"] }
+        linkedin_url: { type: string }
+        github_url: { type: string }
+        email: { type: string }
+        location: { type: string }
+        bio: { type: string }
+        company: { type: string }
+        title: { type: string, description: 職稱/headline }
+        skills: { type: array, items: { type: string } }
+        score: { type: integer, description: "評分 0-100" }
+        grade: { type: string, enum: [A, B, C, D, ""], description: 等級 }
+        client_name: { type: string }
+        job_title: { type: string }
+        task_id: { type: string }
+        status: { type: string, enum: [new, imported, reviewed, skipped] }
