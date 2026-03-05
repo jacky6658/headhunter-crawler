@@ -286,6 +286,19 @@ def system_push():
         if not candidates:
             return jsonify({'error': f'沒有候選人達到 {min_grade} 級以上'}), 400
 
+    # 從任務查 step1ne_job_id，附加到每位候選人（用於設定目標職缺）
+    tm = _get_task_manager()
+    if tm:
+        task_job_map = {}  # task_id → step1ne_job_id
+        for t in tm.get_all_tasks():
+            if t.step1ne_job_id:
+                task_job_map[t.id] = t.step1ne_job_id
+        for c in candidates:
+            if not c.get('step1ne_job_id') and c.get('task_id'):
+                job_id = task_job_map.get(c['task_id'])
+                if job_id:
+                    c['step1ne_job_id'] = job_id
+
     # 使用新版匯入端點（v2），由 Step1ne 端做欄位映射
     result = client.push_candidates_v2(candidates, actor='Crawler-WebUI')
     return jsonify(result)

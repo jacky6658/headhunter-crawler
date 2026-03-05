@@ -118,7 +118,7 @@ server:
   host: 0.0.0.0
   port: 5000
 step1ne:
-  api_base_url: http://localhost:3001
+  api_base_url: https://backendstep1ne.zeabur.app
   auto_push: false
 timeouts:
   http_get: 15

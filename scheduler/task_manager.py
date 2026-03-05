@@ -237,10 +237,13 @@ class TaskManager:
             from integration.step1ne_client import Step1neClient
             client = Step1neClient(api_base)
 
-            # 序列化候選人（Candidate dataclass → dict）
+            # 序列化候選人（Candidate dataclass → dict）+ 附加 step1ne_job_id
             cand_dicts = []
             for c in candidates:
-                d = c.to_dict() if hasattr(c, 'to_dict') else c
+                d = c.to_dict() if hasattr(c, 'to_dict') else dict(c)
+                # 把任務關聯的 step1ne_job_id 附加到每位候選人，用於設定目標職缺
+                if task.step1ne_job_id and not d.get('step1ne_job_id'):
+                    d['step1ne_job_id'] = task.step1ne_job_id
                 cand_dicts.append(d)
 
             result = client.push_candidates_v2(cand_dicts, actor='Crawler-AutoPush')
