@@ -422,19 +422,22 @@ function loadSystemJobs() {
             list.innerHTML =
                 '<div class="mb-2 flex items-center gap-2">' +
                     '<input id="job-search" type="text" class="border rounded px-3 py-1.5 text-sm flex-1" placeholder="搜尋客戶、職缺或關鍵字..." oninput="filterSystemJobs(this.value)">' +
+                    '<button id="clear-selection-btn" onclick="clearAllJobs()" class="hidden text-xs px-2 py-1 bg-red-50 text-red-500 rounded hover:bg-red-100 transition whitespace-nowrap">✕ 清除選取</button>' +
                     '<span id="job-filter-count" class="text-xs text-gray-400 whitespace-nowrap"></span>' +
                 '</div>' +
                 '<div style="max-height:320px;overflow-y:auto">' +
-                '<table class="w-full text-sm"><thead class="bg-gray-50 sticky top-0"><tr><th class="px-3 py-2 text-left w-8"><input type="checkbox" id="select-all-jobs" onclick="toggleAllJobs(this.checked)" title="全選"></th><th class="px-3 py-2 text-left">客戶</th><th class="px-3 py-2 text-left">職缺</th><th class="px-3 py-2 text-left">搜尋關鍵字</th></tr></thead><tbody>' +
+                '<table class="w-full text-sm"><thead class="bg-gray-50 sticky top-0"><tr>' +
+                '<th class="px-3 py-2 text-left w-8"><input type="checkbox" id="select-all-jobs" onchange="toggleAllJobs(this.checked)" title="全選" class="w-4 h-4 cursor-pointer accent-blue-600"></th>' +
+                '<th class="px-3 py-2 text-left">客戶</th><th class="px-3 py-2 text-left">職缺</th><th class="px-3 py-2 text-left">搜尋關鍵字</th></tr></thead><tbody>' +
                 jobs.map((j,i) => {
                     const kw = j.search_primary || j.search_secondary
                         ? `主:${j.search_primary||''}<br>副:${j.search_secondary||''}`
                         : '<span class="text-orange-500">⚠ 無關鍵字 (可自動生成)</span>';
-                    return `<tr id="job-row-${i}" class="border-t hover:bg-blue-50 cursor-pointer" onclick="toggleJob(${i})"
+                    return `<tr id="job-row-${i}" class="border-t hover:bg-blue-50 cursor-pointer select-none transition-colors duration-100" onclick="toggleJob(${i}, false)"
                         data-search="${(j.client_company||'').toLowerCase()} ${(j.position_name||'').toLowerCase()} ${(j.search_primary||'').toLowerCase()} ${(j.search_secondary||'').toLowerCase()} ${(j.key_skills||'').toLowerCase()}">
-                    <td class="px-3 py-2"><input type="checkbox" class="job-check" data-idx="${i}" onclick="event.stopPropagation();toggleJob(${i})"></td>
+                    <td class="px-3 py-2"><input type="checkbox" class="job-check w-4 h-4 cursor-pointer accent-blue-600" data-idx="${i}" onclick="event.stopPropagation();toggleJob(${i}, true)"></td>
                     <td class="px-3 py-2">${j.client_company||''}</td>
-                    <td class="px-3 py-2">${(j.position_name||'').replace(/\n/g,' ')}</td>
+                    <td class="px-3 py-2 font-medium">${(j.position_name||'').replace(/\n/g,' ')}</td>
                     <td class="px-3 py-2 text-xs text-gray-500">${kw}</td>
                 </tr>`;}).join('') + '</tbody></table></div>';
             window._systemJobs = jobs;
@@ -462,10 +465,13 @@ function filterSystemJobs(query) {
     }
 }
 
-function toggleJob(idx) {
+function toggleJob(idx, fromCheckbox) {
     const chk = document.querySelector(`.job-check[data-idx="${idx}"]`);
     if (!chk) return;
-    chk.checked = !chk.checked;
+
+    // 從 row 點擊時需要手動切換；從 checkbox 點擊時瀏覽器已切換
+    if (!fromCheckbox) chk.checked = !chk.checked;
+
     updateJobRowHighlight(idx, chk.checked);
     updateSelectedCount();
 
@@ -486,23 +492,47 @@ function toggleJob(idx) {
 }
 
 function toggleAllJobs(checked) {
-    document.querySelectorAll('.job-check').forEach((chk, i) => {
+    document.querySelectorAll('.job-check').forEach((chk) => {
+        const idx = parseInt(chk.dataset.idx);
         chk.checked = checked;
-        updateJobRowHighlight(i, checked);
+        updateJobRowHighlight(idx, checked);
     });
+    updateSelectedCount();
+}
+
+function clearAllJobs() {
+    document.querySelectorAll('.job-check').forEach((chk) => {
+        const idx = parseInt(chk.dataset.idx);
+        chk.checked = false;
+        updateJobRowHighlight(idx, false);
+    });
+    const selectAll = document.getElementById('select-all-jobs');
+    if (selectAll) selectAll.checked = false;
+    // 清空技能預覽
+    primarySkills = [];
+    secondarySkills = [];
+    renderSkills('primary');
+    renderSkills('secondary');
     updateSelectedCount();
 }
 
 function updateJobRowHighlight(idx, selected) {
     const row = document.getElementById('job-row-' + idx);
     if (row) {
-        row.classList.toggle('bg-blue-100', selected);
-        row.classList.toggle('hover:bg-blue-50', !selected);
+        if (selected) {
+            row.classList.add('bg-blue-100');
+            row.classList.remove('hover:bg-blue-50');
+        } else {
+            row.classList.remove('bg-blue-100');
+            row.classList.add('hover:bg-blue-50');
+        }
     }
 }
 
 function updateSelectedCount() {
     const count = document.querySelectorAll('.job-check:checked').length;
+
+    // 更新已選數量 badge
     let badge = document.getElementById('selected-count');
     if (!badge) {
         badge = document.createElement('span');
@@ -511,6 +541,13 @@ function updateSelectedCount() {
         document.getElementById('system-jobs-status')?.appendChild(badge);
     }
     badge.textContent = count > 0 ? `（已選 ${count} 個）` : '';
+
+    // 顯示/隱藏清除按鈕
+    const clearBtn = document.getElementById('clear-selection-btn');
+    if (clearBtn) {
+        clearBtn.classList.toggle('hidden', count === 0);
+        if (count > 0) clearBtn.textContent = `✕ 清除選取 (${count})`;
+    }
 }
 
 async function createTask() {
