@@ -5,6 +5,7 @@
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Results</h1>
     <div class="flex gap-2">
+        <button onclick="batchEnrich()" id="btn-batch-enrich" class="bg-violet-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-violet-700">AI 深度分析</button>
         <button onclick="rescoreAll()" class="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-purple-700">重新評分</button>
         <button onclick="pushSelected()" class="bg-green-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-green-700">推送到系統</button>
         <button onclick="exportSelected()" class="bg-gray-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-700">匯出 JSON</button>
@@ -91,12 +92,24 @@
             <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
         <div id="detail-content" class="px-6 py-4 space-y-3 text-sm"></div>
+        <!-- AI 深度分析結果區 -->
+        <div id="ai-result-section" class="hidden px-6 py-4 border-t">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="font-bold text-sm text-violet-700">🤖 AI 深度分析結果</h3>
+                <button onclick="document.getElementById('ai-result-section').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 text-sm">收起</button>
+            </div>
+            <div id="ai-result-content" class="space-y-3 text-sm"></div>
+        </div>
         <div class="px-6 py-4 border-t flex gap-2">
             <a id="detail-linkedin" href="#" target="_blank" class="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200 hidden">開啟 LinkedIn</a>
             <a id="detail-github" href="#" target="_blank" class="px-3 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200 hidden">開啟 GitHub</a>
+            <button id="detail-ai-btn" class="hidden px-3 py-1 bg-violet-100 text-violet-700 rounded text-sm hover:bg-violet-200" onclick="runAiAnalysis()">
+                🤖 AI 深度分析
+            </button>
             <button id="detail-ocr-btn" class="hidden px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm hover:bg-yellow-200" onclick="runOcrAnalysis()">
                 &#128269; OCR 深度分析
             </button>
+            <span id="detail-ai-status" class="text-xs text-gray-400 self-center"></span>
             <span id="detail-ocr-status" class="text-xs text-gray-400 self-center"></span>
         </div>
     </div>
@@ -317,6 +330,20 @@ function showDetail(r) {
     if (r.github_url) { ghLink.href = r.github_url; ghLink.classList.remove('hidden'); }
     else ghLink.classList.add('hidden');
 
+    // AI 分析按鈕（僅 LinkedIn 候選人顯示）
+    const aiBtn = document.getElementById('detail-ai-btn');
+    const aiStatus = document.getElementById('detail-ai-status');
+    if (r.linkedin_url) {
+        aiBtn.classList.remove('hidden');
+        aiStatus.textContent = '';
+    } else {
+        aiBtn.classList.add('hidden');
+        aiStatus.textContent = '';
+    }
+
+    // 隱藏舊的 AI 分析結果
+    document.getElementById('ai-result-section').classList.add('hidden');
+
     // OCR 按鈕（僅 LinkedIn 候選人顯示）
     const ocrBtn = document.getElementById('detail-ocr-btn');
     const ocrStatus = document.getElementById('detail-ocr-status');
@@ -422,6 +449,247 @@ function runOcrAnalysis() {
         btn.disabled = false;
         btn.textContent = '\u{1F50D} OCR 深度分析';
         status.innerHTML = '<span class="text-red-500">連線錯誤</span>';
+    });
+}
+
+function runAiAnalysis() {
+    if (!currentDetailCandidate || !currentDetailCandidate.linkedin_url) return;
+
+    const btn = document.getElementById('detail-ai-btn');
+    const status = document.getElementById('detail-ai-status');
+    btn.disabled = true;
+    btn.textContent = '🤖 分析中...';
+    status.textContent = '正在 AI 深度分析（LinkedIn API → Perplexity → Jina）...';
+
+    fetch('/api/enrich/analyze', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            candidate_id: currentDetailCandidate.id,
+            linkedin_url: currentDetailCandidate.linkedin_url,
+            client_name: currentDetailCandidate.client_name || '',
+            candidate: {
+                name: currentDetailCandidate.name || '',
+                title: currentDetailCandidate.title || currentDetailCandidate.bio || '',
+                skills: currentDetailCandidate.skills || '',
+                location: currentDetailCandidate.location || '',
+                company: currentDetailCandidate.company || '',
+                linkedin_url: currentDetailCandidate.linkedin_url,
+            }
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI 深度分析';
+
+        if (data.success || (data.enriched && data.enriched.success)) {
+            status.innerHTML = '<span class="text-green-600">✓ 分析完成</span>';
+            displayAiResult(data);
+        } else {
+            status.innerHTML = `<span class="text-red-500">${data.error || '分析失敗'}</span>`;
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '🤖 AI 深度分析';
+        status.innerHTML = '<span class="text-red-500">連線錯誤</span>';
+    });
+}
+
+function displayAiResult(data) {
+    const section = document.getElementById('ai-result-section');
+    const content = document.getElementById('ai-result-content');
+    section.classList.remove('hidden');
+
+    const e = data.enriched || {};
+    const ai = data.ai_match_result || data.ai_match || {};
+    const usage = data.usage || {};
+
+    let html = '';
+
+    // 基本資料
+    html += `<div class="p-3 bg-violet-50 rounded-lg border border-violet-200">
+        <div class="grid grid-cols-2 gap-2">
+            <div><span class="text-gray-500">📋 現職:</span> <span class="font-medium">${e.current_position || '--'}</span>${e.company ? ' @ ' + e.company : ''}</div>
+            <div><span class="text-gray-500">📅 年資:</span> <span class="font-medium">${e.years_experience || '--'}</span> 年${e.job_changes ? ' (' + e.job_changes + ' 間公司)' : ''}</div>
+            <div><span class="text-gray-500">🎓 學歷:</span> <span class="font-medium">${e.education || '--'}</span></div>
+            <div><span class="text-gray-500">📍 地區:</span> <span class="font-medium">${e.location || '--'}</span></div>
+        </div>
+        ${e.skills ? `<div class="mt-2"><span class="text-gray-500">🔧 技能:</span> <span class="text-xs">${e.skills}</span></div>` : ''}
+    </div>`;
+
+    // 聯繫資訊（LinkedIn API 取得）
+    if (e.contact_email || e.contact_phone || e.contact_websites) {
+        html += `<div class="p-3 bg-green-50 rounded-lg border border-green-200">
+            <div class="font-medium text-sm mb-1">📞 聯繫資訊 <span class="text-xs text-gray-400">(LinkedIn API)</span></div>
+            <div class="grid grid-cols-1 gap-1 text-xs">
+                ${e.contact_email ? `<div><span class="text-gray-500">Email:</span> <a href="mailto:${e.contact_email}" class="text-blue-600 hover:underline">${e.contact_email}</a></div>` : ''}
+                ${e.contact_phone ? `<div><span class="text-gray-500">電話:</span> <span class="font-mono">${Array.isArray(e.contact_phone) ? e.contact_phone.join(', ') : e.contact_phone}</span></div>` : ''}
+                ${e.contact_websites ? `<div><span class="text-gray-500">網站:</span> ${(Array.isArray(e.contact_websites) ? e.contact_websites : [e.contact_websites]).map(w => `<a href="${w}" target="_blank" class="text-blue-600 hover:underline mr-2">${w}</a>`).join('')}</div>` : ''}
+            </div>
+        </div>`;
+    }
+
+    // 穩定性指標
+    if (e.stability_score) {
+        const stScore = parseInt(e.stability_score) || 0;
+        const stColor = stScore >= 70 ? 'green' : stScore >= 40 ? 'yellow' : 'red';
+        html += `<div class="p-3 bg-gray-50 rounded-lg border">
+            <div class="flex items-center justify-between mb-1">
+                <span class="font-medium text-sm">📊 穩定度評分</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-${stColor}-100 text-${stColor}-700">${stScore}/100</span>
+            </div>
+            <div class="text-xs text-gray-500">
+                平均任期 ${e.avg_tenure_months || '?'} 個月 · 換過 ${e.job_changes || '?'} 間公司 · 最近待業 ${e.recent_gap_months || '0'} 個月
+            </div>
+        </div>`;
+    }
+
+    // 工作經歷
+    if (e.work_history && e.work_history.length) {
+        html += `<div class="p-3 bg-gray-50 rounded-lg border">
+            <div class="font-medium text-sm mb-2">💼 工作經歷</div>
+            <div class="space-y-2">
+                ${e.work_history.map(w => `<div class="text-xs border-l-2 border-violet-300 pl-2">
+                    <div class="font-medium">${w.title || '--'} @ ${w.company || '--'}</div>
+                    <div class="text-gray-400">${w.duration || '--'}</div>
+                    ${w.description ? `<div class="text-gray-500 mt-0.5">${w.description.substring(0, 100)}${w.description.length > 100 ? '...' : ''}</div>` : ''}
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    // 學歷
+    if (e.education_details && e.education_details.length) {
+        html += `<div class="p-3 bg-gray-50 rounded-lg border">
+            <div class="font-medium text-sm mb-2">🎓 學歷</div>
+            <div class="space-y-1">
+                ${e.education_details.map(ed => `<div class="text-xs">
+                    ${ed.degree || ''} ${ed.field ? '- ' + ed.field : ''} @ ${ed.school || '--'} ${ed.year ? '(' + ed.year + ')' : ''}
+                </div>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    // AI 職缺匹配（如果有）
+    if (ai && ai.score !== undefined) {
+        const aiScore = ai.score || 0;
+        const recColor = ai.recommendation === '強力推薦' ? 'green' : ai.recommendation === '推薦' ? 'blue' : ai.recommendation === '觀望' ? 'yellow' : 'red';
+        html += `<div class="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+            <div class="flex items-center justify-between mb-2">
+                <span class="font-medium text-sm">🎯 AI 職缺匹配</span>
+                <span class="px-2 py-1 rounded-full text-xs font-bold bg-${recColor}-100 text-${recColor}-700">${aiScore}分 — ${ai.recommendation || '--'}</span>
+            </div>
+            ${ai.matched_skills && ai.matched_skills.length ? `<div class="mb-1">
+                <span class="text-xs text-gray-500">✅ 匹配技能:</span>
+                ${ai.matched_skills.map(s => `<span class="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs mr-1 mb-0.5">${s}</span>`).join('')}
+            </div>` : ''}
+            ${ai.missing_skills && ai.missing_skills.length ? `<div class="mb-1">
+                <span class="text-xs text-gray-500">⚠️ 缺少技能:</span>
+                ${ai.missing_skills.map(s => `<span class="inline-block px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-xs mr-1 mb-0.5">${s}</span>`).join('')}
+            </div>` : ''}
+            ${ai.strengths && ai.strengths.length ? `<div class="mb-1">
+                <span class="text-xs text-gray-500">💪 優勢:</span>
+                <ul class="text-xs text-gray-600 ml-4 list-disc">${ai.strengths.map(s => `<li>${s}</li>`).join('')}</ul>
+            </div>` : ''}
+            ${ai.probing_questions && ai.probing_questions.length ? `<div class="mb-1">
+                <span class="text-xs text-gray-500">🎤 面談問題:</span>
+                <ul class="text-xs text-gray-600 ml-4 list-disc">${ai.probing_questions.map(q => `<li>${q}</li>`).join('')}</ul>
+            </div>` : ''}
+            ${ai.salary_fit ? `<div class="text-xs text-gray-500">💰 薪資: ${ai.salary_fit}</div>` : ''}
+            ${ai.conclusion ? `<div class="mt-2 p-2 bg-violet-100 rounded text-xs text-violet-800">${ai.conclusion}</div>` : ''}
+        </div>`;
+    }
+
+    // 職缺推薦（如果有）
+    if (data.job_recommendations && data.job_recommendations.length) {
+        html += `<div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div class="font-medium text-sm mb-2">🎯 職缺推薦（自動匹配）</div>
+            <div class="space-y-2">
+                ${data.job_recommendations.map((jr, idx) => {
+                    const jrColor = jr.recommendation === '強力推薦' ? 'green' : jr.recommendation === '推薦' ? 'blue' : 'yellow';
+                    return `<div class="flex items-center justify-between text-xs p-2 bg-white rounded border">
+                        <div>
+                            <span class="font-bold">${idx + 1}.</span> ${jr.position_name || jr.job_title || '--'}
+                            ${jr.client_company ? '<span class="text-gray-400">@ ' + jr.client_company + '</span>' : ''}
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-${jrColor}-100 text-${jrColor}-700 font-medium">${jr.match_score || jr.score || 0}分 ${jr.recommendation || ''}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+    }
+
+    // 費用/來源
+    const source = data.source || e._enrichment_source || '--';
+    html += `<div class="text-xs text-gray-400 text-right">
+        來源: ${source}
+        ${usage.estimated_cost ? ' · 費用: $' + (usage.estimated_cost || 0).toFixed(4) : ''}
+        ${usage.total_tokens ? ' · Tokens: ' + usage.total_tokens : ''}
+    </div>`;
+
+    content.innerHTML = html;
+}
+
+function batchEnrich() {
+    const selectedIds = getSelectedIds();
+    if (!selectedIds.length) {
+        alert('請先勾選要分析的候選人');
+        return;
+    }
+
+    // 取得勾選候選人的完整資料
+    const selectedSet = new Set(selectedIds);
+    const candidates = allCandidates
+        .filter(c => selectedSet.has(c.id))
+        .filter(c => c.linkedin_url)  // 只分析有 LinkedIn 的
+        .map(c => ({
+            candidate_id: c.id,
+            linkedin_url: c.linkedin_url,
+            name: c.name || '',
+            title: c.title || c.bio || '',
+            skills: c.skills || '',
+            location: c.location || '',
+            company: c.company || '',
+        }));
+
+    if (!candidates.length) {
+        alert('勾選的候選人都沒有 LinkedIn URL，無法進行 AI 分析');
+        return;
+    }
+
+    const btn = document.getElementById('btn-batch-enrich');
+    btn.disabled = true;
+    btn.textContent = `AI 分析中 (0/${candidates.length})...`;
+
+    fetch('/api/enrich/batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ candidates: candidates })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.textContent = 'AI 深度分析';
+
+        if (data.error && !data.results) {
+            alert('批量分析失敗: ' + data.error);
+            return;
+        }
+
+        const success = data.success_count || 0;
+        const failed = data.failed_count || 0;
+        const total = data.total || candidates.length;
+        const cost = data.usage ? '$' + (data.usage.estimated_cost || 0).toFixed(4) : '免費';
+
+        alert(`批量 AI 分析完成！\n\n分析: ${total} 位\n成功: ${success} 位\n失敗: ${failed} 位\n費用: ${cost}`);
+        loadResults();
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = 'AI 深度分析';
+        alert('批量分析連線錯誤');
     });
 }
 

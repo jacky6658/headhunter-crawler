@@ -42,11 +42,31 @@ class Candidate:
     grade: str = ""                    # A / B / C / D / ""(未評分)
     score_detail: str = ""             # JSON 字串: 評分細項
 
+    # === Enrichment (Phase 2: ProfileEnricher) ===
+    work_history: List[dict] = field(default_factory=list)       # 工作經歷
+    education_details: List[dict] = field(default_factory=list)  # 教育背景
+    years_experience: str = ""         # 總年資
+    stability_score: str = ""          # 穩定度分數
+    job_changes: str = ""              # 換工作次數
+    avg_tenure_months: str = ""        # 平均任期月數
+    recent_gap_months: str = ""        # 最近空窗月數
+    education: str = ""                # 最高學歷摘要
+    enrichment_source: str = ""        # enrichment 來源: perplexity / jina / linkedin_api
+    enrichment_notes: str = ""         # enrichment 額外備註
+
+    # === AI 評分 (Phase 3: ContextualScorer) ===
+    ai_score: int = 0                  # AI 匹配分數 0-100
+    ai_grade: str = ""                 # AI 評等: A / B / C / D
+    ai_recommendation: str = ""        # 強力推薦 / 推薦 / 觀望 / 不推薦
+    ai_match_result: str = ""          # JSON 字串: 完整 AI 匹配結果
+    ai_report: str = ""                # 人選分析報告（文字）
+
     def to_dict(self) -> dict:
         return asdict(self)
 
     def to_sheets_row(self) -> list:
         """轉為 Google Sheets 一行資料"""
+        import json as _json
         return [
             self.id,
             self.name,
@@ -69,6 +89,22 @@ class Candidate:
             self.score,
             self.grade,
             self.score_detail,
+            # Enrichment
+            _json.dumps(self.work_history, ensure_ascii=False) if self.work_history else "",
+            _json.dumps(self.education_details, ensure_ascii=False) if self.education_details else "",
+            self.years_experience,
+            self.stability_score,
+            self.job_changes,
+            self.avg_tenure_months,
+            self.recent_gap_months,
+            self.education,
+            self.enrichment_source,
+            # AI 評分
+            self.ai_score,
+            self.ai_grade,
+            self.ai_recommendation,
+            self.ai_match_result,
+            self.ai_report,
         ]
 
     @staticmethod
@@ -79,6 +115,14 @@ class Candidate:
             "skills", "public_repos", "followers",
             "job_title", "search_date", "task_id", "status", "created_at",
             "score", "grade", "score_detail",
+            # Enrichment
+            "work_history", "education_details",
+            "years_experience", "stability_score", "job_changes",
+            "avg_tenure_months", "recent_gap_months", "education",
+            "enrichment_source",
+            # AI 評分
+            "ai_score", "ai_grade", "ai_recommendation",
+            "ai_match_result", "ai_report",
         ]
 
 

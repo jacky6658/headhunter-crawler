@@ -1,7 +1,12 @@
 """
-搜尋引擎主控 — 整合 LinkedIn + GitHub + OCR + 去重 + 技能評分
-Worker 進程內的主要入口
+搜尋引擎主控 — 整合 LinkedIn + GitHub + OCR + 去重 + AI 深度分析 + 評分
+
+Pipeline:
+  Phase 1: LinkedIn + GitHub 搜尋 → merge_and_dedup
+  Phase 2: ProfileEnricher 補完履歷（work_history, education, stability...）
+  Phase 3: ContextualScorer AI 5 維度評分 (或 fallback 關鍵字評分)
 """
+import json as _json
 import logging
 import os
 import uuid
@@ -22,11 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 class SearchEngine:
-    """整合所有搜尋來源 + 技能評分"""
+    """整合所有搜尋來源 + AI 深度分析 + 評分"""
 
-    def __init__(self, config: dict, task: SearchTask):
+    def __init__(self, config: dict, task: SearchTask, job_context: dict = None):
         self.config = config
         self.task = task
+        self.job_context = job_context  # Step1ne 職缺畫像 (Phase 0 提供)
 
         self.ad = AntiDetect(config)
         self.ocr = CrawlerOCR(config)
@@ -37,7 +43,7 @@ class SearchEngine:
         self.linkedin_searcher = LinkedInSearcher(config, self.ad, self.ocr)
         self.github_searcher = GitHubSearcher(config, self.ad)
 
-        # 技能評分系統
+        # 技能評分系統 (fallback)
         base_dir = os.path.dirname(os.path.dirname(__file__))
         synonyms_path = os.path.join(base_dir, 'config', 'skills_synonyms.yaml')
         self.normalizer = SkillNormalizer(synonyms_path)
@@ -46,16 +52,44 @@ class SearchEngine:
             os.path.join(base_dir, 'config', 'job_profiles')
         )
 
+        # === Phase 2: ProfileEnricher (已實作模組) ===
+        self.enricher = None
+        enrichment_cfg = config.get('enrichment', {})
+        if enrichment_cfg.get('enabled', False):
+            try:
+                from enrichment.profile_enricher import ProfileEnricher
+                # ProfileEnricher 需要完整 config — enrichment_cfg 已包含 perplexity/jina/linkedin 子設定
+                # 注意：不要用 config.get('perplexity', {}) 覆蓋，因為根層級沒有這些 key
+                enricher_config = enrichment_cfg
+                self.enricher = ProfileEnricher(enricher_config)
+                logger.info("ProfileEnricher 已初始化")
+            except Exception as e:
+                logger.warning(f"ProfileEnricher 初始化失敗: {e}")
+
+        # === Phase 3: ContextualScorer (已實作模組) ===
+        self.contextual_scorer = None
+        if self.job_context and self.task.step1ne_job_id:
+            try:
+                from enrichment.contextual_scorer import ContextualScorer
+                from integration.step1ne_client import Step1neClient
+                step1ne_cfg = config.get('step1ne', {})
+                step1ne_client = Step1neClient(step1ne_cfg.get('api_base_url', ''))
+                # enrichment_cfg 已包含 perplexity 子設定，直接傳入
+                scorer_config = enrichment_cfg
+                self.contextual_scorer = ContextualScorer(scorer_config, step1ne_client)
+                logger.info("ContextualScorer 已初始化")
+            except Exception as e:
+                logger.warning(f"ContextualScorer 初始化失敗: {e}")
+
         self.on_progress: Optional[Callable] = None
 
     def execute(self) -> List[Candidate]:
         """
-        執行搜尋任務:
-        1. LinkedIn 搜尋（4 層備援）
-        2. GitHub 搜尋（多 token + 深度分析）
-        3. 合併 + 去重
-        4. 技能評分
-        5. 按分數排序
+        執行搜尋任務 (4 Phase Pipeline):
+          Phase 1: LinkedIn + GitHub 搜尋 → merge_and_dedup
+          Phase 2: ProfileEnricher 補完履歷
+          Phase 3: AI 5 維度評分 (或 fallback 關鍵字評分)
+          Phase 4: 排序 + 儲存
         """
         skills = self.task.all_skills
         location_en = self.task.location
@@ -63,6 +97,7 @@ class SearchEngine:
         pages = self.task.pages
         brave_key = self.config.get('api_keys', {}).get('brave_api_key', '')
 
+        total_phases = 3 if not self.enricher else 5
         logger.info(f"開始搜尋: {self.task.client_name}/{self.task.job_title} | "
                      f"技能={skills} | 地區={location_en} | 頁數={pages}")
 
@@ -71,8 +106,8 @@ class SearchEngine:
             self.linkedin_searcher.on_progress = self.on_progress
             self.github_searcher.on_progress = self.on_progress
 
-        # 1. LinkedIn 搜尋
-        logger.info("[1/3] LinkedIn 搜尋...")
+        # ═══ Phase 1: 搜尋 ═══
+        logger.info("[Phase 1] LinkedIn + GitHub 搜尋...")
         linkedin_result = self.linkedin_searcher.search_with_fallback(
             skills=skills,
             location_zh=location_zh,
@@ -84,10 +119,7 @@ class SearchEngine:
             secondary_skills=self.task.secondary_skills,
         )
         linkedin_data = linkedin_result.get('data', [])
-        linkedin_source = linkedin_result.get('source', '')
 
-        # 2. GitHub 搜尋（含深度分析）
-        logger.info("[2/3] GitHub 搜尋 + 深度分析...")
         github_result = self.github_searcher.search_users(
             skills=skills,
             location=location_en,
@@ -95,23 +127,48 @@ class SearchEngine:
         )
         github_data = github_result.get('data', [])
 
-        # 3. 合併 + 去重
+        # 合併 + 去重
         candidates = self._merge_and_dedup(linkedin_data, github_data)
 
-        logger.info(f"搜尋完成: LinkedIn={len(linkedin_data)} GitHub={len(github_data)} "
+        logger.info(f"Phase 1 完成: LinkedIn={len(linkedin_data)} GitHub={len(github_data)} "
                      f"去重後={len(candidates)}")
 
-        # 4. 技能評分
-        logger.info("[3/3] 技能評分...")
-        candidates = self._score_candidates(candidates)
+        # ═══ Phase 2: Enrichment (ProfileEnricher) ═══
+        if self.enricher and candidates:
+            logger.info(f"[Phase 2] ProfileEnricher 深度分析 {len(candidates)} 位候選人...")
+            candidates = self._enrich_candidates(candidates)
+        else:
+            if not self.enricher:
+                logger.info("[Phase 2] 跳過 (enrichment 未啟用)")
+            else:
+                logger.info("[Phase 2] 跳過 (無候選人)")
 
-        # 5. 按分數排序（高 → 低）
-        candidates.sort(key=lambda c: c.score, reverse=True)
+        # ═══ Phase 3: AI 評分 or 關鍵字評分 ═══
+        if self.contextual_scorer and self.job_context and self.task.step1ne_job_id:
+            logger.info(f"[Phase 3] AI 5 維度評分 (job_id={self.task.step1ne_job_id})...")
+            candidates = self._ai_score_candidates(candidates)
+        else:
+            logger.info("[Phase 3] 關鍵字評分 (無職缺畫像)")
+            candidates = self._score_candidates(candidates)
 
-        logger.info(f"評分完成: A={sum(1 for c in candidates if c.grade == 'A')} "
-                     f"B={sum(1 for c in candidates if c.grade == 'B')} "
-                     f"C={sum(1 for c in candidates if c.grade == 'C')} "
-                     f"D={sum(1 for c in candidates if c.grade == 'D')}")
+        # ═══ Phase 4: 排序 ═══
+        # AI 分數優先，fallback 關鍵字分數
+        candidates.sort(key=lambda c: c.ai_score or c.score, reverse=True)
+
+        # 統計
+        ai_grades = {}
+        kw_grades = {}
+        for c in candidates:
+            g = c.ai_grade or c.grade
+            if c.ai_score > 0:
+                ai_grades[g] = ai_grades.get(g, 0) + 1
+            else:
+                kw_grades[g] = kw_grades.get(g, 0) + 1
+
+        if ai_grades:
+            logger.info(f"AI 評分結果: {ai_grades}")
+        if kw_grades:
+            logger.info(f"關鍵字評分結果: {kw_grades}")
 
         # 儲存去重快取
         self.dedup.save()
@@ -171,6 +228,153 @@ class SearchEngine:
 
         logger.info(f"已評分 {scored}/{len(candidates)} 位候選人")
         return candidates
+
+    # ── Phase 2: Enrichment ──────────────────────────────────
+
+    def _enrich_candidates(self, candidates: List[Candidate]) -> List[Candidate]:
+        """
+        用 ProfileEnricher 補完候選人的工作經歷、教育背景、穩定性指標
+
+        ProfileEnricher 已實作三層備援: LinkedIn API → Perplexity → Jina
+        """
+        # 轉為 dict list 給 ProfileEnricher
+        cand_dicts = [c.to_dict() for c in candidates]
+
+        def on_enrich_progress(completed, total, name):
+            if self.on_progress:
+                self.on_progress(completed, total, completed, f"enrichment ({name})")
+
+        # 呼叫已實作的 enrich_batch
+        enriched_list = self.enricher.enrich_batch(cand_dicts, on_progress=on_enrich_progress)
+
+        # 寫回 Candidate 物件
+        enriched_count = 0
+        for i, enriched in enumerate(enriched_list):
+            if not enriched:
+                continue
+            c = candidates[i]
+            try:
+                # 工作經歷
+                wh = enriched.get('work_history', [])
+                if wh and isinstance(wh, list):
+                    c.work_history = wh
+
+                # 教育背景
+                ed = enriched.get('education_details', [])
+                if ed and isinstance(ed, list):
+                    c.education_details = ed
+
+                # 數值指標
+                c.years_experience = str(enriched.get('years_experience', ''))
+                c.stability_score = str(enriched.get('stability_score', ''))
+                c.job_changes = str(enriched.get('job_changes', ''))
+                c.avg_tenure_months = str(enriched.get('avg_tenure_months', ''))
+                c.recent_gap_months = str(enriched.get('recent_gap_months', ''))
+                c.education = enriched.get('education', '')
+                c.enrichment_source = enriched.get('_enrichment_source', '')
+
+                # 合併新發現的技能
+                new_skills = enriched.get('skills', '')
+                if isinstance(new_skills, str) and new_skills:
+                    new_skill_list = [s.strip() for s in new_skills.replace('、', ',').split(',') if s.strip()]
+                elif isinstance(new_skills, list):
+                    new_skill_list = new_skills
+                else:
+                    new_skill_list = []
+
+                if new_skill_list:
+                    existing = set(s.lower() for s in c.skills)
+                    for ns in new_skill_list:
+                        if ns.lower() not in existing:
+                            c.skills.append(ns)
+                            existing.add(ns.lower())
+
+                # 更新職稱/公司 (如果 enrichment 提供了更完整的資料)
+                if enriched.get('current_position') and not c.title:
+                    c.title = enriched['current_position']
+                if enriched.get('company') and not c.company:
+                    c.company = enriched['company']
+
+                if enriched.get('success', False):
+                    enriched_count += 1
+
+            except Exception as e:
+                logger.error(f"Enrichment 寫回失敗 ({c.name}): {e}")
+                c.enrichment_notes = f'enrichment error: {e}'
+
+        logger.info(f"Phase 2 完成: {enriched_count}/{len(candidates)} 位成功充實")
+        return candidates
+
+    # ── Phase 3: AI 評分 ─────────────────────────────────────
+
+    def _ai_score_candidates(self, candidates: List[Candidate]) -> List[Candidate]:
+        """
+        用 ContextualScorer 做 AI 5 維度匹配評分
+
+        包含：人才畫像符合度 + JD 匹配度 + 公司 DNA 適配性 + 可觸達性 + 活躍信號
+        """
+        job_id = self.task.step1ne_job_id
+        scored_ai = 0
+        scored_fallback = 0
+
+        for i, candidate in enumerate(candidates):
+            try:
+                if self.on_progress:
+                    self.on_progress(i + 1, len(candidates), i + 1,
+                                     f"AI 評分 ({candidate.name})")
+
+                # 準備 enriched dict (含 enrichment 補完的資料)
+                c_dict = candidate.to_dict()
+
+                # 呼叫 ContextualScorer.score_with_job_context
+                result = self.contextual_scorer.score_with_job_context(c_dict, job_id)
+
+                if result.get('success'):
+                    ai_match = result.get('ai_match_result', {})
+                    candidate.ai_score = int(ai_match.get('score', 0))
+
+                    # 用 ContextualScorer 的等級映射
+                    candidate.ai_grade = result.get('talent_level', '')
+                    candidate.ai_recommendation = ai_match.get('recommendation', '')
+                    candidate.ai_match_result = _json.dumps(ai_match, ensure_ascii=False)
+                    candidate.ai_report = result.get('report', '')
+
+                    # 同步到舊的 score/grade 欄位（讓排序和推送邏輯一致）
+                    candidate.score = candidate.ai_score
+                    candidate.grade = candidate.ai_grade
+
+                    scored_ai += 1
+                    logger.debug(f"AI 評分: {candidate.name} → {candidate.ai_score}分 ({candidate.ai_grade})")
+                else:
+                    # AI 評分失敗 → fallback 關鍵字評分
+                    self._fallback_keyword_score(candidate)
+                    scored_fallback += 1
+
+            except Exception as e:
+                logger.error(f"AI 評分失敗 ({candidate.name}): {e}")
+                self._fallback_keyword_score(candidate)
+                scored_fallback += 1
+
+        logger.info(f"Phase 3 完成: AI 評分 {scored_ai} 位, fallback {scored_fallback} 位")
+        return candidates
+
+    def _fallback_keyword_score(self, candidate: Candidate):
+        """單一候選人的 fallback 關鍵字評分"""
+        try:
+            job_profile = self.profile_manager.load_profile(
+                client_name=self.task.client_name,
+                job_title=self.task.job_title,
+                primary_skills=self.task.primary_skills,
+                secondary_skills=self.task.secondary_skills,
+                location=self.task.location,
+            )
+            c_dict = candidate.to_dict()
+            result = self.scoring_engine.score_candidate(c_dict, job_profile)
+            candidate.score = result['total_score']
+            candidate.grade = result['grade']
+            candidate.score_detail = ScoringEngine.score_to_detail_json(result)
+        except Exception as e:
+            logger.error(f"Fallback 評分也失敗 ({candidate.name}): {e}")
 
     def _merge_and_dedup(self, linkedin_data: list, github_data: list) -> List[Candidate]:
         """合併 LinkedIn + GitHub 結果，去重"""

@@ -144,7 +144,14 @@ class TaskManager:
         try:
             from crawler.engine import SearchEngine
 
-            engine = SearchEngine(self.config, task)
+            # ── Phase 0: 拉取職缺畫像 + AI 生成搜尋關鍵字 ──
+            job_context = None
+            if task.step1ne_job_id:
+                task.progress_detail = 'Phase 0: 拉取職缺畫像...'
+                self._save_tasks()
+                job_context = self._pull_job_context(task)
+
+            engine = SearchEngine(self.config, task, job_context=job_context)
 
             def on_progress(current, total, found, source):
                 task.progress = int(current / total * 100) if total else 0
@@ -260,6 +267,155 @@ class TaskManager:
         except Exception as e:
             # 靜默處理 — 不影響任務狀態
             logger.warning(f"Auto-push 例外（非阻塞）: {e}")
+
+    # ── Phase 0: 職缺畫像 + AI 關鍵字 ──────────────────────────
+
+    def _pull_job_context(self, task: SearchTask) -> dict:
+        """
+        Phase 0: 從 Step1ne 拉取完整職缺畫像，並用 AI 生成搜尋關鍵字
+        Returns: job_context dict (含職缺完整資訊) 或 None
+        """
+        try:
+            step1ne_cfg = self.config.get('step1ne', {})
+            api_base = step1ne_cfg.get('api_base_url', '')
+            if not api_base:
+                logger.warning("Step1ne API 未設定，跳過 Phase 0")
+                return None
+
+            from integration.step1ne_client import Step1neClient
+            client = Step1neClient(api_base)
+
+            # 拉取職缺詳細資料
+            job_data = client.fetch_job_detail(task.step1ne_job_id)
+            if not job_data:
+                logger.warning(f"Step1ne 職缺 {task.step1ne_job_id} 取得失敗")
+                return None
+
+            # 正規化: API 可能回 {data: {...}} 或直接 {...}
+            if 'data' in job_data and isinstance(job_data['data'], dict):
+                job_data = job_data['data']
+
+            logger.info(
+                f"Phase 0: 取得職缺 [{job_data.get('position_name', '')}] "
+                f"from Step1ne (id={task.step1ne_job_id})"
+            )
+
+            # 如果任務沒有手動設定關鍵字，用 AI 從職缺畫像生成
+            if not task.primary_skills:
+                task.progress_detail = 'Phase 0: AI 分析關鍵字...'
+                self._save_tasks()
+                self._generate_ai_keywords(task, job_data)
+
+            return job_data
+
+        except Exception as e:
+            logger.error(f"Phase 0 失敗: {e}")
+            return None
+
+    def _generate_ai_keywords(self, task: SearchTask, job_data: dict):
+        """
+        用 Perplexity AI 分析職缺畫像，生成最佳搜尋關鍵字
+        失敗時 fallback 到規則式 KeywordGenerator
+        """
+        try:
+            enrichment_cfg = self.config.get('enrichment', {})
+            # perplexity config 可能在 enrichment.perplexity 或頂層 perplexity
+            ppx_cfg = enrichment_cfg.get('perplexity', self.config.get('perplexity', {}))
+            api_key = ppx_cfg.get('api_key', '')
+
+            if not api_key:
+                logger.info("Perplexity API key 未設定，使用規則式關鍵字")
+                self._fallback_keywords(task, job_data)
+                return
+
+            from enrichment.prompts import KEYWORD_GENERATION_PROMPT
+            import json as _json
+
+            # 組裝 prompt
+            prompt = KEYWORD_GENERATION_PROMPT.format(
+                position_name=job_data.get('position_name', task.job_title),
+                client_company=job_data.get('client_company', task.client_name),
+                talent_profile=job_data.get('talent_profile', ''),
+                job_description=job_data.get('job_description', ''),
+                company_profile=job_data.get('company_profile', ''),
+                key_skills=job_data.get('key_skills', ''),
+                search_primary=', '.join(task.primary_skills) if task.primary_skills else '(未設定)',
+                search_secondary=', '.join(task.secondary_skills) if task.secondary_skills else '(未設定)',
+            )
+
+            # 呼叫 Perplexity Sonar API
+            import ssl
+            from urllib.request import Request, urlopen
+
+            payload = _json.dumps({
+                'model': ppx_cfg.get('model', 'sonar'),
+                'messages': [{'role': 'user', 'content': prompt}],
+                'temperature': 0.1,
+            }).encode('utf-8')
+
+            req = Request(
+                ppx_cfg.get('api_url', 'https://api.perplexity.ai/chat/completions'),
+                data=payload,
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json',
+                },
+            )
+
+            ctx = ssl.create_default_context()
+            resp = urlopen(req, timeout=30, context=ctx)
+            result = _json.loads(resp.read().decode('utf-8'))
+            content = result['choices'][0]['message']['content']
+
+            # 提取 JSON（可能被 markdown code block 包裹）
+            if '```json' in content:
+                content = content.split('```json')[1].split('```')[0]
+            elif '```' in content:
+                content = content.split('```')[1].split('```')[0]
+
+            keywords = _json.loads(content.strip())
+
+            # 寫回 task
+            if keywords.get('primary_skills'):
+                task.primary_skills = keywords['primary_skills'][:5]
+            if keywords.get('secondary_skills'):
+                task.secondary_skills = keywords['secondary_skills'][:8]
+
+            logger.info(
+                f"AI 關鍵字生成成功: primary={task.primary_skills}, "
+                f"secondary={task.secondary_skills}"
+            )
+            self._save_tasks()
+
+        except Exception as e:
+            logger.warning(f"AI 關鍵字生成失敗: {e}，fallback 規則式")
+            self._fallback_keywords(task, job_data)
+
+    def _fallback_keywords(self, task: SearchTask, job_data: dict):
+        """規則式 fallback: 從職缺資料提取關鍵字"""
+        try:
+            from scoring.keyword_generator import KeywordGenerator
+            gen = KeywordGenerator()
+
+            job_title = job_data.get('position_name', task.job_title)
+            key_skills = job_data.get('key_skills', '')
+            jd = job_data.get('job_description', '')
+
+            # 從 key_skills 提取
+            if key_skills:
+                skills = [s.strip() for s in key_skills.replace('、', ',').replace('；', ',').split(',') if s.strip()]
+                task.primary_skills = skills[:5]
+                task.secondary_skills = skills[5:10]
+            elif jd:
+                # 從 JD 用規則式提取
+                result = gen.generate(job_title, jd)
+                task.primary_skills = result.get('primary', [])[:5]
+                task.secondary_skills = result.get('secondary', [])[:8]
+
+            logger.info(f"Fallback 關鍵字: primary={task.primary_skills}")
+            self._save_tasks()
+        except Exception as e:
+            logger.warning(f"Fallback 關鍵字也失敗: {e}")
 
     # ── 排程 ─────────────────────────────────────────────────
 

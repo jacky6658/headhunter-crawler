@@ -220,6 +220,29 @@ class ScoringEngine:
         if isinstance(tech_stack, list):
             raw_skills.extend(tech_stack)
 
+        # 6. work_history 提取（Phase 2 enrichment 結果）
+        work_history = candidate.get('work_history', [])
+        if isinstance(work_history, list):
+            # 只取最近 3 段工作避免噪音
+            for wh in work_history[:3]:
+                if isinstance(wh, dict):
+                    # 從職稱提取
+                    wh_title = wh.get('title', '')
+                    if wh_title:
+                        extracted = self.normalizer.extract_skills_from_text(wh_title)
+                        raw_skills.extend(extracted)
+                    # 從描述提取
+                    wh_desc = wh.get('description', '')
+                    if wh_desc:
+                        extracted = self.normalizer.extract_skills_from_text(wh_desc)
+                        raw_skills.extend(extracted)
+
+        # 7. current_position（enrichment 補充的職稱）
+        current_pos = candidate.get('current_position', '')
+        if current_pos and current_pos != title:
+            extracted = self.normalizer.extract_skills_from_text(current_pos)
+            raw_skills.extend(extracted)
+
         # 正規化 + 去重
         return self.normalizer.normalize_list(raw_skills)
 

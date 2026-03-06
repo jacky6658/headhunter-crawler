@@ -22,6 +22,7 @@ api_keys:
   brave_api_key: BSAGYPKNGT7tKInGsjI9EQxO9AkHBls
   github_tokens:
   - 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
+  perplexity_api_key: ${PERPLEXITY_API_KEY}
 captcha:
   indicators:
   - g-recaptcha
@@ -101,6 +102,34 @@ crawler:
   sample_per_page: 5
 dedup:
   cache_file: /Users/user/Downloads/headhunter-crawler/data/dedup_cache.json
+enrichment:
+  batch:
+    concurrency: 3
+    delay_between: 1.0
+  enabled: true
+  jina:
+    enabled: true
+    rate_limit_rpm: 60
+  linkedin:
+    cookies_dir: ''
+    enabled: true
+    max_requests_per_hour: 80
+    password: ''
+    request_cooldown_seconds: 5
+    username: ''
+  perplexity:
+    api_key: ${PERPLEXITY_API_KEY}
+    max_retries: 2
+    model: sonar
+    timeout: 30
+  provider: perplexity
+  provider_priority:
+  - linkedin
+  - perplexity
+  - jina
+  scoring:
+    auto_enrich_on_push: false
+    use_job_context: true
 google_sheets:
   batch_size: 50
   credentials_file: /Users/user/Downloads/headhunter-crawler/credentials.json

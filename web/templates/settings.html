@@ -77,6 +77,68 @@
                 <p class="text-xs text-gray-400 mt-1">新增後按上方「儲存設定」才會生效</p>
             </div>
 
+            <!-- Perplexity API Key (AI 深度分析) -->
+            <div>
+                <label class="text-sm font-medium text-gray-700 block mb-2">Perplexity API Key <span class="text-gray-400 font-normal">(AI 深度分析用)</span></label>
+                <div id="pplx-saved-box" class="hidden mb-2 p-3 rounded-lg border-2 border-green-300 bg-green-50">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-green-700 font-medium text-sm">已儲存</span>
+                            <span id="pplx-saved-value" class="ml-2 font-mono text-sm text-gray-700"></span>
+                        </div>
+                        <button onclick="pplxStartEdit()" class="text-sm px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50">更換 Key</button>
+                    </div>
+                </div>
+                <div id="pplx-not-set-box" class="hidden mb-2 p-3 rounded-lg border-2 border-red-200 bg-red-50">
+                    <span class="text-red-600 font-medium text-sm">尚未設定 — 輸入 Perplexity API Key 後可啟用 AI 深度分析</span>
+                    <a href="https://docs.perplexity.ai/" target="_blank" class="text-xs text-blue-500 hover:underline ml-2">取得 Key</a>
+                </div>
+                <div id="pplx-edit-box" class="hidden">
+                    <div class="flex gap-2">
+                        <input id="s-pplx-key" type="text" class="flex-1 border-2 border-purple-300 rounded-lg px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" placeholder="貼上你的 Perplexity API Key（pplx-xxxxxxxxx）">
+                        <button onclick="pplxCancelEdit()" id="pplx-cancel-btn" class="hidden text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 text-gray-500">取消</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">註冊送 $5 免費額度（約 800 次分析） · Sonar 模型 ~$0.006/次</p>
+                </div>
+            </div>
+
+            <!-- LinkedIn API (直連 Voyager API) -->
+            <div>
+                <label class="text-sm font-medium text-gray-700 block mb-2">LinkedIn API <span class="text-gray-400 font-normal">(直連 Voyager API，免費)</span></label>
+                <div id="li-status-box" class="hidden mb-2 p-3 rounded-lg border-2">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span id="li-status-icon" class="font-medium text-sm"></span>
+                            <span id="li-status-user" class="ml-2 font-mono text-sm text-gray-700"></span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="testLinkedInApi()" class="text-sm px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50">測試連線</button>
+                            <button onclick="liStartEdit()" class="text-sm px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50">更換帳密</button>
+                        </div>
+                    </div>
+                    <div id="li-test-status" class="mt-1 text-xs"></div>
+                </div>
+                <div id="li-not-set-box" class="hidden mb-2 p-3 rounded-lg border-2 border-gray-200 bg-gray-50">
+                    <span class="text-gray-500 font-medium text-sm">尚未設定 — 輸入 LinkedIn 帳密可啟用免費 Profile 深度分析</span>
+                </div>
+                <div id="li-edit-box" class="hidden space-y-2">
+                    <div class="flex gap-2">
+                        <input id="s-li-username" type="email" class="flex-1 border-2 border-blue-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="LinkedIn 帳號 (Email)">
+                    </div>
+                    <div class="flex gap-2">
+                        <input id="s-li-password" type="password" class="flex-1 border-2 border-blue-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" placeholder="LinkedIn 密碼">
+                        <button onclick="liCancelEdit()" id="li-cancel-btn" class="hidden text-sm px-3 py-1 border rounded-lg hover:bg-gray-50 text-gray-500">取消</button>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" id="s-li-enabled" checked>
+                        啟用 LinkedIn API（作為最高優先資料來源）
+                    </label>
+                    <div class="p-2 bg-amber-50 rounded border border-amber-200 text-xs text-amber-700">
+                        ⚠️ 使用此功能可能導致 LinkedIn 帳號被限制，建議使用專用帳號。系統已內建 Rate Limiting（80次/小時、5秒間隔）。
+                    </div>
+                </div>
+            </div>
+
             <!-- Google Sheets -->
             <div>
                 <label class="text-sm text-gray-600">Google Sheets Spreadsheet ID</label>
@@ -158,6 +220,7 @@
 <script>
 let githubTokensMasked = [];  // server 回傳的遮罩值
 let braveKeyMasked = '';
+let pplxKeyMasked = '';
 
 // ── 頁面載入 ──
 function loadSettings() {
@@ -192,6 +255,24 @@ function loadSettings() {
                 showGithubSaved(githubTokensMasked);
             } else {
                 showGithubNotSet();
+            }
+
+            // ── Perplexity Key 顯示 ──
+            pplxKeyMasked = cfg.api_keys?.perplexity_key_masked || '';
+            if (cfg.api_keys?.has_perplexity_key && pplxKeyMasked) {
+                showPplxSaved(pplxKeyMasked);
+            } else {
+                showPplxNotSet();
+            }
+
+            // ── LinkedIn API 顯示 ──
+            const liCfg = cfg.enrichment?.linkedin || {};
+            liHasCredentials = liCfg.has_credentials || false;
+            if (liHasCredentials) {
+                showLiConfigured(liCfg.username_masked || '', liCfg.enabled);
+                document.getElementById('s-li-enabled').checked = liCfg.enabled || false;
+            } else {
+                showLiNotSet();
             }
         });
 
@@ -280,6 +361,104 @@ function addGithubToken() {
     div.querySelector('input').focus();
 }
 
+// ── Perplexity Key UI ──
+function showPplxSaved(masked) {
+    document.getElementById('pplx-saved-box').classList.remove('hidden');
+    document.getElementById('pplx-saved-value').textContent = masked;
+    document.getElementById('pplx-not-set-box').classList.add('hidden');
+    document.getElementById('pplx-edit-box').classList.add('hidden');
+}
+
+function showPplxNotSet() {
+    document.getElementById('pplx-saved-box').classList.add('hidden');
+    document.getElementById('pplx-not-set-box').classList.remove('hidden');
+    document.getElementById('pplx-edit-box').classList.remove('hidden');
+    document.getElementById('pplx-cancel-btn').classList.add('hidden');
+    document.getElementById('s-pplx-key').value = '';
+}
+
+function pplxStartEdit() {
+    document.getElementById('pplx-saved-box').classList.add('hidden');
+    document.getElementById('pplx-edit-box').classList.remove('hidden');
+    document.getElementById('pplx-cancel-btn').classList.remove('hidden');
+    document.getElementById('s-pplx-key').value = '';
+    document.getElementById('s-pplx-key').focus();
+}
+
+function pplxCancelEdit() {
+    if (pplxKeyMasked) {
+        showPplxSaved(pplxKeyMasked);
+    } else {
+        showPplxNotSet();
+    }
+}
+
+// ── LinkedIn API UI ──
+let liHasCredentials = false;
+
+function showLiConfigured(userMasked, enabled) {
+    const box = document.getElementById('li-status-box');
+    box.classList.remove('hidden');
+    box.classList.remove('border-green-300', 'bg-green-50', 'border-red-300', 'bg-red-50', 'border-gray-300', 'bg-gray-50');
+    if (enabled) {
+        box.classList.add('border-green-300', 'bg-green-50');
+        document.getElementById('li-status-icon').innerHTML = '<span class="text-green-700">已啟用</span>';
+    } else {
+        box.classList.add('border-gray-300', 'bg-gray-50');
+        document.getElementById('li-status-icon').innerHTML = '<span class="text-gray-500">已停用</span>';
+    }
+    document.getElementById('li-status-user').textContent = userMasked || '';
+    document.getElementById('li-not-set-box').classList.add('hidden');
+    document.getElementById('li-edit-box').classList.add('hidden');
+}
+
+function showLiNotSet() {
+    document.getElementById('li-status-box').classList.add('hidden');
+    document.getElementById('li-not-set-box').classList.remove('hidden');
+    document.getElementById('li-edit-box').classList.remove('hidden');
+    document.getElementById('li-cancel-btn').classList.add('hidden');
+    document.getElementById('s-li-username').value = '';
+    document.getElementById('s-li-password').value = '';
+}
+
+function liStartEdit() {
+    document.getElementById('li-status-box').classList.add('hidden');
+    document.getElementById('li-edit-box').classList.remove('hidden');
+    document.getElementById('li-cancel-btn').classList.remove('hidden');
+    document.getElementById('s-li-username').value = '';
+    document.getElementById('s-li-password').value = '';
+    document.getElementById('s-li-username').focus();
+}
+
+function liCancelEdit() {
+    if (liHasCredentials) {
+        showLiConfigured(document.getElementById('li-status-user').textContent, document.getElementById('s-li-enabled').checked);
+    } else {
+        showLiNotSet();
+    }
+}
+
+function testLinkedInApi() {
+    const statusEl = document.getElementById('li-test-status');
+    statusEl.innerHTML = '<span class="text-gray-500">測試連線中...</span>';
+
+    fetch('/api/linkedin/api-test', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                statusEl.innerHTML = '<span class="text-green-600">✓ 認證成功！LinkedIn API 可正常使用</span>';
+                const box = document.getElementById('li-status-box');
+                box.classList.remove('border-gray-300', 'bg-gray-50', 'border-red-300', 'bg-red-50');
+                box.classList.add('border-green-300', 'bg-green-50');
+            } else {
+                statusEl.innerHTML = `<span class="text-red-500">✗ ${data.error || '認證失敗'}</span>`;
+            }
+        })
+        .catch(() => {
+            statusEl.innerHTML = '<span class="text-red-500">✗ 連線錯誤</span>';
+        });
+}
+
 // ── 連線測試 ──
 function testConnection() {
     const url = document.getElementById('s-api-url').value;
@@ -321,6 +500,14 @@ function saveSettings() {
         apiKeys.brave_api_key = braveKey;
     }
 
+    // Perplexity key: 只有 edit box 可見且有輸入值時才傳
+    const pplxInput = document.getElementById('s-pplx-key');
+    const pplxEditVisible = !document.getElementById('pplx-edit-box').classList.contains('hidden');
+    const pplxKey = pplxInput.value.trim();
+    if (pplxEditVisible && pplxKey) {
+        apiKeys.perplexity_api_key = pplxKey;
+    }
+
     // GitHub tokens: 收集新輸入的 token
     const newTokenInputs = [...document.querySelectorAll('.gh-token-new')];
     const newTokens = newTokenInputs.map(el => el.value.trim()).filter(t => t);
@@ -332,12 +519,26 @@ function saveSettings() {
     // 如果有移除舊 token（masked 數量減少了）
     apiKeys.github_tokens_keep_count = githubTokensMasked.length;
 
+    // LinkedIn credentials: 只在 edit box 可見且有輸入值時才傳
+    const linkedinCredentials = {};
+    const liEditVisible = !document.getElementById('li-edit-box').classList.contains('hidden');
+    const liUsername = document.getElementById('s-li-username').value.trim();
+    const liPassword = document.getElementById('s-li-password').value.trim();
+    if (liEditVisible && liUsername) {
+        linkedinCredentials.username = liUsername;
+    }
+    if (liEditVisible && liPassword) {
+        linkedinCredentials.password = liPassword;
+    }
+    linkedinCredentials.enabled = document.getElementById('s-li-enabled').checked;
+
     const settings = {
         step1ne: {
             api_base_url: document.getElementById('s-api-url').value.trim(),
             auto_push: document.getElementById('s-auto-push').checked,
         },
         api_keys: apiKeys,
+        linkedin_credentials: linkedinCredentials,
         crawler: {
             browser_pool_size: parseInt(document.getElementById('s-pool-size').value),
             default_location: document.getElementById('s-location').value,

@@ -396,10 +396,26 @@ def get_settings():
             return '***' if key else ''
         return key[:prefix] + '***' + key[-suffix:]
 
+    perplexity_key = config.get('api_keys', {}).get('perplexity_api_key', '') or \
+                     config.get('enrichment', {}).get('perplexity', {}).get('api_key', '')
+
+    linkedin_cfg = config.get('enrichment', {}).get('linkedin', {})
+    linkedin_username = linkedin_cfg.get('username', '')
+
     safe_config = {
         'step1ne': config.get('step1ne', {}),
         'crawler': config.get('crawler', {}),
         'anti_detect': config.get('anti_detect', {}),
+        'enrichment': {
+            'enabled': config.get('enrichment', {}).get('enabled', False),
+            'provider': config.get('enrichment', {}).get('provider', 'perplexity'),
+            'provider_priority': config.get('enrichment', {}).get('provider_priority', ['linkedin', 'perplexity', 'jina']),
+            'linkedin': {
+                'enabled': linkedin_cfg.get('enabled', False),
+                'has_credentials': bool(linkedin_username and linkedin_cfg.get('password')),
+                'username_masked': mask_key(linkedin_username, 3, 4) if linkedin_username else '',
+            },
+        },
         'google_sheets': {
             'spreadsheet_id': config.get('google_sheets', {}).get('spreadsheet_id', ''),
             'credentials_file': config.get('google_sheets', {}).get('credentials_file', 'credentials.json'),
@@ -410,6 +426,8 @@ def get_settings():
             'has_brave_key': bool(brave_key),
             'brave_key_masked': mask_key(brave_key, 4, 4),
             'github_tokens_masked': [mask_key(t, 4, 4) for t in github_tokens],
+            'has_perplexity_key': bool(perplexity_key),
+            'perplexity_key_masked': mask_key(perplexity_key, 4, 4),
         },
     }
     return jsonify(safe_config)
@@ -453,6 +471,22 @@ def update_settings():
             # 直接覆蓋（向後相容）
             existing_keys['github_tokens'] = new_keys['github_tokens']
 
+        # Perplexity key: 只在有值時更新
+        if new_keys.get('perplexity_api_key'):
+            existing_keys['perplexity_api_key'] = new_keys['perplexity_api_key']
+            # 同步到 enrichment 區塊
+            if 'enrichment' not in config:
+                config['enrichment'] = {}
+            if 'perplexity' not in config['enrichment']:
+                config['enrichment']['perplexity'] = {}
+            config['enrichment']['perplexity']['api_key'] = new_keys['perplexity_api_key']
+            config['enrichment']['enabled'] = True
+            # 清除快取的 enricher，下次會重新初始化
+            if hasattr(current_app, '_profile_enricher'):
+                del current_app._profile_enricher
+            if hasattr(current_app, '_contextual_scorer'):
+                del current_app._contextual_scorer
+
         config['api_keys'] = existing_keys
 
     if 'crawler' in data:
@@ -460,6 +494,30 @@ def update_settings():
 
     if 'anti_detect' in data:
         config['anti_detect'] = {**config.get('anti_detect', {}), **data['anti_detect']}
+
+    if 'linkedin_credentials' in data:
+        linkedin_data = data['linkedin_credentials']
+        if 'enrichment' not in config:
+            config['enrichment'] = {}
+        if 'linkedin' not in config['enrichment']:
+            config['enrichment']['linkedin'] = {}
+
+        li_cfg = config['enrichment']['linkedin']
+
+        if 'username' in linkedin_data and linkedin_data['username']:
+            li_cfg['username'] = linkedin_data['username']
+        if 'password' in linkedin_data and linkedin_data['password']:
+            li_cfg['password'] = linkedin_data['password']
+        if 'enabled' in linkedin_data:
+            li_cfg['enabled'] = bool(linkedin_data['enabled'])
+
+        config['enrichment']['linkedin'] = li_cfg
+
+        # 清除快取的 enricher，下次會重新初始化
+        if hasattr(current_app, '_profile_enricher'):
+            del current_app._profile_enricher
+        if hasattr(current_app, '_contextual_scorer'):
+            del current_app._contextual_scorer
 
     if 'google_sheets' in data:
         config['google_sheets'] = {**config.get('google_sheets', {}), **data['google_sheets']}
@@ -803,6 +861,288 @@ def linkedin_ocr_quota():
         'quota_remaining': remaining,
         'quota_total': 10,
     })
+
+
+# ── AI 深度分析 (Perplexity/Jina) ─────────────────────────────
+
+def _get_enrichment_components():
+    """取得 enrichment 系統元件（懶載入）"""
+    if not hasattr(current_app, '_profile_enricher'):
+        config = current_app.config.get('CRAWLER_CONFIG', {})
+        enrichment_config = config.get('enrichment', {})
+
+        # 合併 Perplexity API key（可能存在 api_keys 區塊）
+        if not enrichment_config.get('perplexity', {}).get('api_key'):
+            pplx_key = config.get('api_keys', {}).get('perplexity_api_key', '')
+            if pplx_key:
+                if 'perplexity' not in enrichment_config:
+                    enrichment_config['perplexity'] = {}
+                enrichment_config['perplexity']['api_key'] = pplx_key
+
+        from enrichment.profile_enricher import ProfileEnricher
+        from enrichment.contextual_scorer import ContextualScorer
+
+        current_app._profile_enricher = ProfileEnricher(enrichment_config)
+
+        step1ne = _get_step1ne_client()
+        current_app._contextual_scorer = ContextualScorer(enrichment_config, step1ne)
+
+    return {
+        'enricher': current_app._profile_enricher,
+        'scorer': current_app._contextual_scorer,
+    }
+
+
+@api_bp.route('/enrich/analyze', methods=['POST'])
+def enrich_analyze():
+    """
+    單一候選人 AI 深度分析
+
+    Body: {
+        "candidate_id": "xxx" (optional, 用於關聯 Sheets 記錄),
+        "linkedin_url": "https://linkedin.com/in/xxx",
+        "candidate": { ... } (optional, 完整候選人資料),
+        "job_id": 123 (optional, Step1ne 職缺 ID),
+        "client_name": "xxx" (optional),
+    }
+    """
+    data = request.get_json()
+    linkedin_url = data.get('linkedin_url', '')
+    candidate_data = data.get('candidate', {})
+    job_id = data.get('job_id')
+
+    if not linkedin_url and not candidate_data.get('linkedin_url'):
+        return jsonify({'error': '需要 linkedin_url'}), 400
+
+    # 組合候選人資料
+    if not candidate_data:
+        candidate_data = {'linkedin_url': linkedin_url}
+    elif not candidate_data.get('linkedin_url'):
+        candidate_data['linkedin_url'] = linkedin_url
+
+    # 如果有 candidate_id，從 Sheets 讀取完整資料
+    store = _get_sheets_store()
+    candidate_id = data.get('candidate_id')
+    client_name = data.get('client_name')
+    if store and candidate_id and client_name:
+        result = store.read_candidates(client_name=client_name, limit=500)
+        for r in result.get('data', []):
+            if r.get('id') == candidate_id:
+                candidate_data = {**r, **candidate_data}
+                break
+
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+        scorer = components['scorer']
+
+        # Step 1: 深度分析 LinkedIn 頁面
+        enriched = enricher.enrich_candidate(candidate_data)
+
+        # Step 2: 職缺匹配評分（如果有 job_id）
+        ai_match = None
+        job_recommendations = []
+
+        if job_id:
+            score_result = scorer.score_with_job_context(enriched, int(job_id))
+            ai_match = score_result.get('ai_match_result')
+        else:
+            # 嘗試從任務找 job_id
+            task_id = candidate_data.get('task_id')
+            if task_id:
+                tm = _get_task_manager()
+                if tm:
+                    for t in tm.get_all_tasks():
+                        if t.id == task_id and t.step1ne_job_id:
+                            score_result = scorer.score_with_job_context(enriched, int(t.step1ne_job_id))
+                            ai_match = score_result.get('ai_match_result')
+                            break
+
+            # 自動推薦 Top 3 職缺
+            if not ai_match:
+                job_recommendations = scorer.recommend_jobs(enriched, top_n=3)
+                if job_recommendations:
+                    ai_match = job_recommendations[0].get('ai_match_result')
+
+        return jsonify({
+            'success': enriched.get('success', False),
+            'enriched': {k: v for k, v in enriched.items() if not k.startswith('_')},
+            'ai_match_result': ai_match,
+            'job_recommendations': job_recommendations,
+            'usage': enricher.get_stats(),
+            'source': enriched.get('_enrichment_source', ''),
+        })
+
+    except Exception as e:
+        logger.error(f"AI 深度分析失敗: {e}", exc_info=True)
+        return jsonify({'error': f'分析失敗: {str(e)}', 'success': False}), 500
+
+
+@api_bp.route('/enrich/batch', methods=['POST'])
+def enrich_batch():
+    """
+    批量 AI 深度分析
+
+    Body: {
+        "candidate_ids": ["id1", "id2", ...],
+        "client_name": "xxx",
+        "job_id": 123 (optional),
+    }
+    """
+    data = request.get_json()
+    candidate_ids = data.get('candidate_ids', [])
+    candidates_direct = data.get('candidates', [])
+    client_name = data.get('client_name')
+    job_id = data.get('job_id')
+
+    # 支援兩種模式：直接傳候選人陣列 或 傳 candidate_ids 從 Sheets 讀取
+    if candidates_direct:
+        candidates = candidates_direct
+    elif candidate_ids:
+        store = _get_sheets_store()
+        if not store:
+            return jsonify({'error': 'Google Sheets 未設定'}), 503
+        result = store.read_candidates(client_name=client_name, limit=500)
+        all_candidates = result.get('data', [])
+        id_set = set(candidate_ids)
+        candidates = [c for c in all_candidates if c.get('id') in id_set]
+    else:
+        return jsonify({'error': '需要 candidates 或 candidate_ids'}), 400
+
+    if not candidates:
+        return jsonify({'error': '找不到指定的候選人'}), 404
+
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+        scorer = components['scorer']
+
+        # 批量深度分析
+        enriched_list = enricher.enrich_batch(candidates)
+
+        # 逐一評分
+        results = []
+        for enriched in enriched_list:
+            ai_match = None
+            if job_id and enriched.get('success'):
+                score_result = scorer.score_with_job_context(enriched, int(job_id))
+                ai_match = score_result.get('ai_match_result')
+
+            results.append({
+                'name': enriched.get('name', ''),
+                'success': enriched.get('success', False),
+                'enriched': {k: v for k, v in enriched.items() if not k.startswith('_')},
+                'ai_match_result': ai_match,
+                'source': enriched.get('_enrichment_source', ''),
+            })
+
+        success_count = sum(1 for r in results if r['success'])
+        failed_count = len(results) - success_count
+
+        return jsonify({
+            'results': results,
+            'total': len(results),
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'usage': enricher.get_stats(),
+        })
+
+    except Exception as e:
+        logger.error(f"批量 AI 分析失敗: {e}", exc_info=True)
+        return jsonify({'error': f'批量分析失敗: {str(e)}'}), 500
+
+
+@api_bp.route('/enrich/stats')
+def enrich_stats():
+    """查詢 enrichment 使用統計"""
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+        return jsonify(enricher.get_stats())
+    except Exception as e:
+        return jsonify({
+            'total_calls': 0,
+            'error': str(e),
+            'message': 'Enrichment 系統尚未初始化',
+        })
+
+
+# ── LinkedIn API 狀態 ─────────────────────────────────────────
+
+@api_bp.route('/linkedin/api-status')
+def linkedin_api_status():
+    """查詢 LinkedIn API 認證狀態"""
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+
+        if not enricher.linkedin_api:
+            return jsonify({
+                'available': False,
+                'status': 'not_configured',
+                'message': 'LinkedIn API 未設定',
+            })
+
+        api = enricher.linkedin_api
+        stats = api.get_stats()
+
+        return jsonify({
+            'available': api.is_available(),
+            'status': 'authenticated' if api._api else ('error' if api._auth_error else 'not_authenticated'),
+            'authenticated': api._api is not None,
+            'auth_error': api._auth_error,
+            'stats': stats,
+        })
+    except Exception as e:
+        return jsonify({
+            'available': False,
+            'status': 'error',
+            'message': str(e),
+        })
+
+
+@api_bp.route('/linkedin/api-test', methods=['POST'])
+def linkedin_api_test():
+    """手動測試 LinkedIn API 認證"""
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+
+        if not enricher.linkedin_api:
+            return jsonify({
+                'success': False,
+                'error': 'LinkedIn API 未設定，請先在設定頁面輸入帳密',
+            }), 400
+
+        api = enricher.linkedin_api
+        if not api.is_available():
+            return jsonify({
+                'success': False,
+                'error': '缺少 LinkedIn 帳號或密碼',
+            }), 400
+
+        # 嘗試認證
+        api._api = None  # 清除舊連線
+        api._auth_error = None
+        api._ensure_authenticated()
+
+        if api._api:
+            return jsonify({
+                'success': True,
+                'message': 'LinkedIn API 認證成功！',
+                'stats': api.get_stats(),
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': api._auth_error or '認證失敗（未知原因）',
+            }), 401
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'認證測試失敗: {str(e)}',
+        }), 500
 
 
 # ── GitHub 深度分析 API ──────────────────────────────────────
