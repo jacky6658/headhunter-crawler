@@ -152,6 +152,11 @@ server:
 step1ne:
   api_base_url: https://backendstep1ne.zeabur.app
   auto_push: false
+telegram:
+  enabled: true
+  bot_token: "8375770979:AAFuC3emSd05sjRxSyxpP6kTmd7LyKpA2cg"
+  chat_id: "-1003231629634"
+  thread_id: "1247"
 timeouts:
   http_get: 15
   page_load: 30000

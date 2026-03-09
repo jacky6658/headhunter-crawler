@@ -42,6 +42,14 @@ class TaskManager:
         self.tasks_file = sched_cfg.get('tasks_file', 'data/tasks.json')
         self.checkpoint_file = sched_cfg.get('checkpoint_file', 'data/checkpoints.json')
 
+        # Telegram 通知
+        try:
+            from notification.telegram import TelegramNotifier
+            self.notifier = TelegramNotifier(config)
+        except Exception as e:
+            logger.warning(f"Telegram 通知初始化失敗: {e}")
+            self.notifier = None
+
         self._load_tasks()
 
     def start(self):
@@ -233,6 +241,13 @@ class TaskManager:
             self._clear_checkpoint(task_id)
             logger.info(f"任務 {task_id} 完成: {len(candidates)} 位候選人")
 
+            # ── Telegram 回報: 任務完成 ──
+            if self.notifier:
+                try:
+                    self.notifier.notify_task_completed(task, candidates)
+                except Exception as e:
+                    logger.warning(f"Telegram 完成通知失敗: {e}")
+
             # ── Auto-push: 任務完成後自動推送到 Step1ne 系統 ──
             self._auto_push_if_enabled(task, candidates)
 
@@ -240,12 +255,24 @@ class TaskManager:
             task.status = 'stopped'
             task.error_message = '使用者手動停止'
             logger.info(f"任務 {task_id} 已停止")
+            # ── Telegram 回報: 任務停止 ──
+            if self.notifier:
+                try:
+                    self.notifier.notify_task_stopped(task)
+                except Exception:
+                    pass
 
         except Exception as e:
             task.status = 'failed'
             task.error_message = str(e)
             self._save_checkpoint(task_id, 'failed', {'error': str(e)})
             logger.error(f"任務 {task_id} 失敗: {e}")
+            # ── Telegram 回報: 任務失敗 ──
+            if self.notifier:
+                try:
+                    self.notifier.notify_task_failed(task, str(e))
+                except Exception:
+                    pass
 
         finally:
             # 清除停止信號
@@ -315,6 +342,13 @@ class TaskManager:
                 )
             else:
                 logger.warning(f"Auto-push 失敗: {result.get('error', 'unknown')}")
+
+            # ── Telegram 回報: Auto-push 結果 ──
+            if self.notifier:
+                try:
+                    self.notifier.notify_auto_push_result(task, result)
+                except Exception:
+                    pass
 
         except Exception as e:
             # 靜默處理 — 不影響任務狀態
