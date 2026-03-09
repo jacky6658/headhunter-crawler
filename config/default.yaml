@@ -120,9 +120,13 @@ enrichment:
   perplexity:
     api_key: ${PERPLEXITY_API_KEY}
     max_retries: 2
-    model: sonar
-    timeout: 30
+    model: sonar-pro
+    scoring_model: sonar    # v4 P1: scoring 用較便宜的模型
+    timeout: 60
   provider: perplexity
+  cache:                    # v4 P2: enrichment 結果快取
+    file: data/enrichment_cache.json
+    ttl_days: 7
   provider_priority:
   - linkedin
   - perplexity

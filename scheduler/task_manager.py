@@ -45,11 +45,28 @@ class TaskManager:
         self._scheduler.start()
 
         # 恢復已排程的任務
+        scheduled_count = 0
+        missed_tasks = []
         for task_id, task in self.tasks.items():
             if task.status in ('pending', 'paused') and task.schedule_type != 'once':
                 self._schedule_task(task)
+                scheduled_count += 1
 
-        logger.info(f"排程器已啟動，{len(self.tasks)} 個任務")
+                # v3: 檢查是否有「今天該跑但沒跑」的任務
+                if task.schedule_type == 'daily' and task.last_run:
+                    try:
+                        last = datetime.strptime(task.last_run, '%Y-%m-%d %H:%M:%S')
+                        now = datetime.now()
+                        hours_since = (now - last).total_seconds() / 3600
+                        if hours_since > 25:
+                            missed_tasks.append((task_id, task.job_title, f"{hours_since:.0f}h ago"))
+                    except (ValueError, TypeError):
+                        pass
+
+        logger.info(f"排程器已啟動，{len(self.tasks)} 個任務，{scheduled_count} 個定期排程已恢復")
+        if missed_tasks:
+            for tid, title, ago in missed_tasks:
+                logger.warning(f"⚠️ 定期任務可能漏跑: [{tid}] {title} (上次執行: {ago})")
 
     def stop(self):
         if self._scheduler:
@@ -446,8 +463,11 @@ class TaskManager:
                 id=task.id,
                 args=[task.id],
                 replace_existing=True,
+                misfire_grace_time=3600,  # v3: 允許最多 1 小時的延遲（原本只有 1 秒）
+                coalesce=True,           # v3: 錯過多次只補跑一次
+                max_instances=1,         # 同一任務最多同時跑 1 個
             )
-            logger.info(f"排程: {task.id} ({task.schedule_type})")
+            logger.info(f"排程: {task.id} ({task.schedule_type}) misfire_grace=3600s")
 
     # ── 持久化 ───────────────────────────────────────────────
 

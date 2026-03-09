@@ -5,7 +5,10 @@ ProfileEnricher — 候選人 LinkedIn 深度分析統一入口
 輸出: 完整 Step1ne 候選人卡片欄位 (work_history, education_details, years_experience 等)
 """
 
+import json
 import logging
+import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -55,12 +58,20 @@ class ProfileEnricher:
             'provider_priority', ['linkedin', 'perplexity', 'jina']
         )
 
+        # v4 P2: Enrichment 快取（跨職缺不重複 enrich 同一人）
+        cache_cfg = config.get('cache', {})
+        self._cache_file = cache_cfg.get('file', 'data/enrichment_cache.json')
+        self._cache_ttl_days = cache_cfg.get('ttl_days', 7)
+        self._enrichment_cache = self._load_cache()
+        self._cache_lock = threading.Lock()
+
         # 統計
         self._stats = {
             'total_calls': 0,
             'linkedin_calls': 0,
             'perplexity_calls': 0,
             'jina_calls': 0,
+            'cache_hits': 0,
             'success': 0,
             'failed': 0,
             'start_time': datetime.now().isoformat(),
@@ -96,6 +107,13 @@ class ProfileEnricher:
             logger.warning(f"候選人 {candidate.get('name', '?')} 沒有 LinkedIn URL，跳過深度分析")
             return self._build_empty_result(candidate, '無 LinkedIn URL')
 
+        # v4 P2: 檢查快取 — 同一 LinkedIn URL 不重複 enrich
+        cached = self._get_cached(linkedin_url)
+        if cached:
+            self._stats['cache_hits'] = self._stats.get('cache_hits', 0) + 1
+            logger.info(f"enrichment cache hit: {candidate.get('name', '?')} ({linkedin_url[:50]}...)")
+            return cached
+
         # 依照 provider_priority 順序嘗試
         for provider in self.provider_priority:
             result = None
@@ -105,6 +123,7 @@ class ProfileEnricher:
                 if result and result.get('success'):
                     self._stats['linkedin_calls'] += 1
                     self._stats['success'] += 1
+                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
                     return result
 
             elif provider == 'perplexity' and self.perplexity and self.perplexity.is_available():
@@ -112,6 +131,7 @@ class ProfileEnricher:
                 if result and result.get('success'):
                     self._stats['perplexity_calls'] += 1
                     self._stats['success'] += 1
+                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
                     return result
 
             elif provider == 'jina' and self.jina and self.jina.is_available():
@@ -119,6 +139,7 @@ class ProfileEnricher:
                 if result and result.get('success'):
                     self._stats['jina_calls'] += 1
                     self._stats['success'] += 1
+                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
                     return result
 
         # 所有 provider 都失敗
@@ -168,6 +189,9 @@ class ProfileEnricher:
                 if on_progress:
                     name = candidates[idx].get('name', '?')
                     on_progress(completed, total, name)
+
+        # v4 P2: 批量完成後持久化快取
+        self._save_cache()
 
         logger.info(f"批量深度分析完成: {total} 位, "
                      f"成功 {self._stats['success']}, 失敗 {self._stats['failed']}")
@@ -445,6 +469,7 @@ class ProfileEnricher:
     def get_stats(self) -> dict:
         """回傳使用統計"""
         stats = {**self._stats}
+        stats['enrichment_cache_size'] = len(self._enrichment_cache)
         if self.linkedin_api:
             stats['linkedin_api_usage'] = self.linkedin_api.get_stats()
         if self.perplexity:
@@ -452,3 +477,62 @@ class ProfileEnricher:
         if self.jina:
             stats['jina_usage'] = self.jina.get_stats()
         return stats
+
+    # ── v4 P2: Enrichment 快取方法 ──────────────────────────────
+
+    def _load_cache(self) -> dict:
+        """從磁碟載入 enrichment 快取"""
+        if not os.path.exists(self._cache_file):
+            logger.info(f"enrichment cache 檔案不存在，建立空快取: {self._cache_file}")
+            return {}
+        try:
+            with open(self._cache_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"enrichment cache 載入: {len(data)} 筆快取")
+            return data
+        except Exception as e:
+            logger.warning(f"enrichment cache 載入失敗: {e}")
+            return {}
+
+    def _save_cache(self):
+        """持久化 enrichment 快取到磁碟"""
+        with self._cache_lock:
+            try:
+                os.makedirs(os.path.dirname(self._cache_file) or '.', exist_ok=True)
+                with open(self._cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(self._enrichment_cache, f, ensure_ascii=False, indent=None)
+                logger.info(f"enrichment cache 已儲存: {len(self._enrichment_cache)} 筆")
+            except Exception as e:
+                logger.error(f"enrichment cache 儲存失敗: {e}")
+
+    def _get_cached(self, linkedin_url: str) -> Optional[dict]:
+        """查詢快取（含 TTL 檢查）"""
+        if not linkedin_url:
+            return None
+        entry = self._enrichment_cache.get(linkedin_url)
+        if not entry:
+            return None
+        try:
+            cached_at = datetime.fromisoformat(entry.get('cached_at', ''))
+            age_days = (datetime.now() - cached_at).days
+            if age_days > self._cache_ttl_days:
+                logger.info(f"enrichment cache 過期: {linkedin_url[:50]}... ({age_days} days old)")
+                with self._cache_lock:
+                    self._enrichment_cache.pop(linkedin_url, None)
+                return None
+        except (ValueError, TypeError):
+            with self._cache_lock:
+                self._enrichment_cache.pop(linkedin_url, None)
+            return None
+        return entry.get('result')
+
+    def _set_cached(self, linkedin_url: str, result: dict):
+        """寫入快取"""
+        if not linkedin_url:
+            return
+        with self._cache_lock:
+            cache_result = {k: v for k, v in result.items() if k != '_enrichment_raw'}
+            self._enrichment_cache[linkedin_url] = {
+                'cached_at': datetime.now().isoformat(),
+                'result': cache_result,
+            }

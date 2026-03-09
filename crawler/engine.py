@@ -133,6 +133,17 @@ class SearchEngine:
         logger.info(f"Phase 1 完成: LinkedIn={len(linkedin_data)} GitHub={len(github_data)} "
                      f"去重後={len(candidates)}")
 
+        # ═══ Phase 1.5: 相關性篩選 ═══
+        if candidates:
+            before_count = len(candidates)
+            candidates = self._filter_by_relevance(candidates)
+            filtered_count = before_count - len(candidates)
+            if filtered_count > 0:
+                logger.info(f"[Phase 1.5] 相關性篩選: {before_count} → {len(candidates)} "
+                           f"(過濾 {filtered_count} 位不相關候選人)")
+            else:
+                logger.info(f"[Phase 1.5] 相關性篩選: 全部 {len(candidates)} 位通過")
+
         # ═══ Phase 2: Enrichment (ProfileEnricher) ═══
         if self.enricher and candidates:
             logger.info(f"[Phase 2] ProfileEnricher 深度分析 {len(candidates)} 位候選人...")
@@ -312,10 +323,12 @@ class SearchEngine:
         用 ContextualScorer 做 AI 5 維度匹配評分
 
         包含：人才畫像符合度 + JD 匹配度 + 公司 DNA 適配性 + 可觸達性 + 活躍信號
+        v4 P0: 加入預篩 — quick_skill_match + title 檢查，跳過明顯不相關的候選人
         """
         job_id = self.task.step1ne_job_id
         scored_ai = 0
         scored_fallback = 0
+        skipped_prefilter = 0  # v4 P0: 新增計數器
 
         for i, candidate in enumerate(candidates):
             try:
@@ -325,6 +338,12 @@ class SearchEngine:
 
                 # 準備 enriched dict (含 enrichment 補完的資料)
                 c_dict = candidate.to_dict()
+
+                # v4 P0: 預篩 — 跳過明顯不相關的候選人，省 API call
+                if self.job_context and not self.contextual_scorer.should_ai_score(c_dict, self.job_context):
+                    self._fallback_keyword_score(candidate)
+                    skipped_prefilter += 1
+                    continue
 
                 # 呼叫 ContextualScorer.score_with_job_context
                 result = self.contextual_scorer.score_with_job_context(c_dict, job_id)
@@ -355,7 +374,7 @@ class SearchEngine:
                 self._fallback_keyword_score(candidate)
                 scored_fallback += 1
 
-        logger.info(f"Phase 3 完成: AI 評分 {scored_ai} 位, fallback {scored_fallback} 位")
+        logger.info(f"Phase 3 完成: AI 評分 {scored_ai} 位, 預篩跳過 {skipped_prefilter} 位, fallback {scored_fallback} 位")
         return candidates
 
     def _fallback_keyword_score(self, candidate: Candidate):
@@ -375,6 +394,89 @@ class SearchEngine:
             candidate.score_detail = ScoringEngine.score_to_detail_json(result)
         except Exception as e:
             logger.error(f"Fallback 評分也失敗 ({candidate.name}): {e}")
+
+    # ── Phase 1.5: 相關性篩選 ──────────────────────────────
+
+    def _filter_by_relevance(self, candidates: List[Candidate]) -> List[Candidate]:
+        """
+        v3: Phase 1.5 — 根據職稱/技能做本地相關性篩選，過濾明顯不相關的候選人
+
+        邏輯：
+        - 沒有文字資訊 → 保留（給 enrichment 機會）
+        - 有關鍵字命中 → 保留
+        - 無命中 + 明確不相關職稱 → 過濾
+        - 無命中 + 不確定 → 保留
+        """
+        import re
+
+        # 建立搜尋關鍵字集合
+        keywords = set()
+        if self.task.job_title:
+            for w in self.task.job_title.lower().split():
+                if len(w) >= 2:
+                    keywords.add(w)
+        for skill in (self.task.primary_skills or []):
+            keywords.add(skill.lower().strip())
+        for skill in (self.task.secondary_skills or []):
+            keywords.add(skill.lower().strip())
+
+        if not keywords:
+            return candidates  # 沒有關鍵字可篩 → 全部保留
+
+        # 不相關職稱模式
+        UNRELATED_PATTERNS = [
+            r'\b(sales|salesperson|業務|銷售)\b',
+            r'\b(marketing|行銷)\b',
+            r'\b(hr|human resources|人資|人力資源)\b',
+            r'\b(legal|法務|律師|lawyer|attorney)\b',
+            r'\b(nurse|護理|護士|醫師|doctor|physician)\b',
+            r'\b(teacher|教師|教授|professor)\b',
+            r'\b(driver|司機|駕駛)\b',
+            r'\b(chef|廚師|cook)\b',
+            r'\b(receptionist|前台|櫃台)\b',
+        ]
+
+        kept = []
+        for c in candidates:
+            # 蒐集候選人的可搜尋文字
+            text_parts = []
+            if c.title:
+                text_parts.append(c.title.lower())
+            if c.bio:
+                text_parts.append(c.bio.lower())
+            if c.skills:
+                if isinstance(c.skills, list):
+                    text_parts.extend(s.lower() for s in c.skills)
+                elif isinstance(c.skills, str):
+                    text_parts.append(c.skills.lower())
+            searchable = ' '.join(text_parts)
+
+            # 沒有文字資訊 → 保留
+            if not searchable.strip():
+                kept.append(c)
+                continue
+
+            # 有關鍵字命中 → 保留
+            has_match = any(kw in searchable for kw in keywords)
+            if has_match:
+                kept.append(c)
+                continue
+
+            # 無命中 — 檢查是否明確不相關
+            is_unrelated = False
+            for pattern in UNRELATED_PATTERNS:
+                if re.search(pattern, searchable, re.IGNORECASE):
+                    is_unrelated = True
+                    break
+
+            if is_unrelated:
+                logger.debug(f"Phase 1.5 過濾: {c.name} (職稱不相關)")
+                continue  # 過濾掉
+
+            # 無命中 + 不確定 → 保留（給 enrichment/AI 評分機會）
+            kept.append(c)
+
+        return kept
 
     def _merge_and_dedup(self, linkedin_data: list, github_data: list) -> List[Candidate]:
         """合併 LinkedIn + GitHub 結果，去重"""

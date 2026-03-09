@@ -45,7 +45,9 @@ class PerplexityClient:
             'session_start': datetime.now().isoformat(),
         }
 
-    def analyze_profile(self, linkedin_url: str, prompt: str) -> dict:
+    def analyze_profile(self, linkedin_url: str, prompt: str,
+                        model_override: str = None,
+                        system_prompt: str = None) -> dict:
         """
         呼叫 Perplexity Sonar 分析 LinkedIn URL
 
@@ -60,17 +62,23 @@ class PerplexityClient:
         if not self.api_key:
             return {'error': 'Perplexity API key 未設定', 'success': False}
 
+        # v4: 支援 model 覆蓋（P1: scoring 用 sonar 省成本）
+        active_model = model_override or self.model
+
+        # v4: 支援自訂 system prompt（P3: 拆分 job context 到 system）
+        sys_content = system_prompt or '你是專業獵頭顧問 AI。請根據指令分析候選人資訊，以嚴格 JSON 格式回傳。不要包含任何 markdown 標記或額外文字。'
+
         headers = {
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json',
         }
 
         payload = {
-            'model': self.model,
+            'model': active_model,
             'messages': [
                 {
                     'role': 'system',
-                    'content': '你是專業獵頭顧問 AI。請根據指令分析候選人資訊，以嚴格 JSON 格式回傳。不要包含任何 markdown 標記或額外文字。'
+                    'content': sys_content
                 },
                 {
                     'role': 'user',
@@ -87,7 +95,7 @@ class PerplexityClient:
         last_error = None
         for attempt in range(self.max_retries + 1):
             try:
-                logger.info(f"Perplexity API 呼叫 (嘗試 {attempt + 1}/{self.max_retries + 1}): {linkedin_url}")
+                logger.info(f"Perplexity API 呼叫 (嘗試 {attempt + 1}/{self.max_retries + 1}, model={active_model}): {linkedin_url}")
 
                 response = requests.post(
                     self.BASE_URL,
@@ -112,7 +120,7 @@ class PerplexityClient:
 
                 # 追蹤使用量
                 usage = data.get('usage', {})
-                self._track_usage(usage)
+                self._track_usage(usage, model_used=active_model)
 
                 # 提取回應文字
                 content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
@@ -128,8 +136,8 @@ class PerplexityClient:
                     result['_usage'] = {
                         'input_tokens': usage.get('prompt_tokens', 0),
                         'output_tokens': usage.get('completion_tokens', 0),
-                        'model': self.model,
-                        'cost': self._estimate_cost(usage),
+                        'model': active_model,
+                        'cost': self._estimate_cost(usage, model_used=active_model),
                     }
                     return result
                 else:
@@ -218,16 +226,17 @@ class PerplexityClient:
         logger.warning(f"無法從 Perplexity 回應中提取 JSON: {content[:200]}")
         return None
 
-    def _track_usage(self, usage: dict):
+    def _track_usage(self, usage: dict, model_used: str = None):
         """追蹤累計使用量"""
         self._usage['calls'] += 1
         self._usage['input_tokens'] += usage.get('prompt_tokens', 0)
         self._usage['output_tokens'] += usage.get('completion_tokens', 0)
-        self._usage['estimated_cost'] += self._estimate_cost(usage)
+        self._usage['estimated_cost'] += self._estimate_cost(usage, model_used)
 
-    def _estimate_cost(self, usage: dict) -> float:
-        """估算單次呼叫費用"""
-        pricing = PRICING.get(self.model, PRICING['sonar'])
+    def _estimate_cost(self, usage: dict, model_used: str = None) -> float:
+        """估算單次呼叫費用（v4: 支援指定模型計價）"""
+        model = model_used or self.model
+        pricing = PRICING.get(model, PRICING['sonar'])
         input_tokens = usage.get('prompt_tokens', 0)
         output_tokens = usage.get('completion_tokens', 0)
 

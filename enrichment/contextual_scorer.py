@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from .perplexity_client import PerplexityClient
-from .prompts import JOB_MATCH_PROMPT, ANALYSIS_REPORT_TEMPLATE
+from .prompts import JOB_MATCH_PROMPT, JOB_MATCH_SYSTEM_PROMPT, JOB_MATCH_USER_PROMPT, ANALYSIS_REPORT_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,26 @@ class ContextualScorer:
     與 Step1ne SCORING-GUIDE.md 的 ai_match_result 格式完全一致
     """
 
+    # v3: 無效候選人名稱黑名單 — 爬蟲有時會抓到 LinkedIn 登入頁或廣告
+    INVALID_NAME_PATTERNS = [
+        'LinkedIn', '登入', '註冊', 'Sign in', 'Sign up', 'Log in',
+        'HRnetGroup', '加入 LinkedIn', '同意並加入', 'Join LinkedIn',
+        'People also viewed', '其他人也看了', 'LinkedIn Premium',
+    ]
+
+    # v4 P0: 明確不相關的職稱模式（用於預篩，避免浪費 AI API call）
+    UNRELATED_TITLE_PATTERNS = [
+        r'\b(sales|salesperson|業務|銷售)\b',
+        r'\b(marketing|行銷)\b',
+        r'\b(hr|human resources|人資|人力資源)\b',
+        r'\b(legal|法務|律師|lawyer|attorney)\b',
+        r'\b(nurse|護理|護士|醫師|doctor|physician)\b',
+        r'\b(teacher|教師|教授|professor)\b',
+        r'\b(driver|司機|駕駛)\b',
+        r'\b(chef|廚師|cook)\b',
+        r'\b(receptionist|前台|櫃台)\b',
+    ]
+
     def __init__(self, config: dict, step1ne_client=None):
         """
         Args:
@@ -58,8 +78,12 @@ class ContextualScorer:
         perplexity_config = config.get('perplexity', {})
         self.perplexity = PerplexityClient(perplexity_key, perplexity_config) if perplexity_key else None
 
+        # v4 P1: scoring 用較便宜的模型（sonar），enrichment 維持 sonar-pro
+        self.scoring_model = config.get('perplexity', {}).get('scoring_model', 'sonar')
+
         self._jobs_cache = {}  # {job_id: job_data}
         self._all_jobs_cache = None  # 快取所有 Open 職缺
+        self._job_system_cache = {}  # v4 P3: 快取 job system prompt
 
     def score_with_job_context(self, enriched_candidate: dict, job_id: int) -> dict:
         """
@@ -167,31 +191,137 @@ class ContextualScorer:
         recommendations.sort(key=lambda x: x['match_score'], reverse=True)
         return recommendations
 
+    def should_ai_score(self, enriched: dict, job: dict) -> bool:
+        """
+        P0: 預篩 — 判斷候選人是否值得花 API call 做 AI 評分
+
+        回傳 True = 需要 AI 評分, False = 跳過（用 rule-based 評分）
+
+        跳過條件（同時滿足才跳過）：
+        1. quick_skill_match 分數 = 0（完全無技能重疊）
+        2. 候選人有足夠已知資訊（≥3 個技能），代表我們有足夠信心判斷不相關
+        或
+        1. 職稱明確不相關（sales/HR/legal 等）且 quick_score < 10
+        """
+        import re
+
+        # 提取候選人技能
+        candidate_skills = self._extract_skills(enriched)
+        quick_score = self._quick_skill_match(candidate_skills, job)
+
+        # 條件 1: quick_score = 0 且有足夠已知技能
+        if quick_score == 0 and len(candidate_skills) >= 3:
+            name = enriched.get('name', '?')
+            logger.info(f"P0 預篩跳過: {name} (quick_score=0, 有 {len(candidate_skills)} 個已知技能但完全不匹配)")
+            return False
+
+        # 條件 2: 職稱明確不相關 + quick_score 很低
+        if quick_score < 10:
+            title = (enriched.get('current_position') or enriched.get('title', '')).lower()
+            if title:
+                for pattern in self.UNRELATED_TITLE_PATTERNS:
+                    if re.search(pattern, title, re.IGNORECASE):
+                        name = enriched.get('name', '?')
+                        logger.info(f"P0 預篩跳過: {name} (職稱不相關: {title[:40]}, quick_score={quick_score})")
+                        return False
+
+        return True
+
     def _ai_score(self, enriched: dict, job: dict) -> dict:
-        """用 Perplexity AI 做深度評分"""
+        """用 Perplexity AI 做深度評分（v3: 三道閘門 + v4: prompt 拆分）"""
         try:
+            # v3: 過濾無效候選人名稱
+            candidate_name = enriched.get('name', '')
+            for pattern in self.INVALID_NAME_PATTERNS:
+                if pattern.lower() in candidate_name.lower():
+                    logger.info(f"跳過無效候選人: {candidate_name} (匹配黑名單: {pattern})")
+                    return {
+                        'ai_match_result': {
+                            'score': 0, 'grade': 'C', 'recommendation': '不推薦',
+                            'job_id': job.get('id'), 'job_title': job.get('position_name', ''),
+                            'conclusion': f'無效候選人：名稱「{candidate_name}」為 LinkedIn 系統頁面，非真實候選人',
+                            'relevance_check': {'is_relevant': False, 'relevance_note': '非真實候選人'},
+                            'evaluated_by': 'Crawler-enricher-v4',
+                        },
+                        'talent_level': 'C',
+                        'report': f'無效候選人: {candidate_name}',
+                        'success': True,
+                    }
+
             # 組合候選人資料文字
             candidate_profile = self._format_candidate_profile(enriched)
 
-            # 填入 prompt
-            prompt = JOB_MATCH_PROMPT.format(
-                candidate_profile=candidate_profile,
-                position_name=job.get('position_name', ''),
-                client_company=job.get('client_company', ''),
-                talent_profile=job.get('talent_profile', '（未提供）'),
-                job_description=job.get('job_description', '（未提供）'),
-                company_profile=job.get('company_profile', '（未提供）'),
-                consultant_notes=job.get('consultant_notes', '（無）'),
-                key_skills=job.get('key_skills', ''),
-                experience_required=job.get('experience_required', ''),
-            )
+            # v4 P3: 拆分 prompt — system（job context）+ user（candidate）
+            job_id = job.get('id') or job.get('jobId') or job.get('job_id')
 
-            # 呼叫 Perplexity
-            raw = self.perplexity.analyze_profile('', prompt)
+            if job_id and job_id not in self._job_system_cache:
+                self._job_system_cache[job_id] = JOB_MATCH_SYSTEM_PROMPT.format(
+                    position_name=job.get('position_name', ''),
+                    client_company=job.get('client_company', ''),
+                    talent_profile=job.get('talent_profile', '（未提供）'),
+                    job_description=job.get('job_description', '（未提供）'),
+                    company_profile=job.get('company_profile', '（未提供）'),
+                    consultant_notes=job.get('consultant_notes', '（無）'),
+                    key_skills=job.get('key_skills', ''),
+                    experience_required=job.get('experience_required', ''),
+                    location=job.get('location', '（未指定）'),
+                )
+                logger.info(f"v4 P3: job system prompt cached for job_id={job_id}")
+
+            system_prompt = self._job_system_cache.get(job_id)
+            user_prompt = JOB_MATCH_USER_PROMPT.format(candidate_profile=candidate_profile)
+
+            # v4 P1: scoring 用 sonar（便宜）; P3: 拆分 system/user prompt
+            raw = self.perplexity.analyze_profile(
+                '', user_prompt,
+                model_override=self.scoring_model,
+                system_prompt=system_prompt,
+            )
 
             if not raw or not raw.get('success'):
                 logger.warning(f"Perplexity 評分失敗: {raw.get('error', '?')}")
                 return self._rule_based_score(enriched, job)
+
+            # v3: 三道閘門後處理
+            relevance_check = raw.get('relevance_check', {})
+            if not isinstance(relevance_check, dict):
+                relevance_check = {}
+
+            raw_score = int(raw.get('score', 50))
+            capped = False
+            cap_reasons = []
+
+            # 閘門 A: 相關性 — 不相關則 max 25
+            if relevance_check.get('is_relevant') is False:
+                if raw_score > 25:
+                    logger.info(f"閘門A(相關性): {enriched.get('name', '?')} 不相關, {raw_score} → 25")
+                    raw_score = 25
+                    capped = True
+                    cap_reasons.append('相關性不符')
+
+            # 閘門 B: 地理位置 — 海外無台灣關聯 max 40
+            location_gate = relevance_check.get('location_gate', '')
+            if 'fail' in str(location_gate).lower():
+                if raw_score > 40:
+                    logger.info(f"閘門B(地點): {enriched.get('name', '?')} 地點不符, {raw_score} → 40")
+                    raw_score = min(raw_score, 40)
+                    capped = True
+                    cap_reasons.append('工作地點不符')
+
+            # 閘門 C: Overqualified — 嚴重超資格扣 15-25 分
+            seniority_gate = relevance_check.get('seniority_gate', '')
+            if 'overqualified' in str(seniority_gate).lower():
+                penalty = 20
+                logger.info(f"閘門C(職級): {enriched.get('name', '?')} overqualified, {raw_score} → {raw_score - penalty}")
+                raw_score = max(0, raw_score - penalty)
+                cap_reasons.append('段位過高(overqualified)')
+
+            if capped or cap_reasons:
+                raw['score'] = raw_score
+                if raw_score < 40:
+                    raw['recommendation'] = '不推薦'
+                elif raw_score < 55:
+                    raw['recommendation'] = '不推薦'
 
             # 建構 ai_match_result
             return self._build_result(raw, enriched, job)
@@ -212,6 +342,7 @@ class ContextualScorer:
 
         ai_match_result = {
             'score': score,
+            'grade': grade,  # v3: 明確寫入 grade 到 ai_match_result
             'recommendation': recommendation,
             'job_id': job.get('id'),
             'job_title': raw.get('job_title') or job.get('position_name', ''),
@@ -224,7 +355,7 @@ class ContextualScorer:
             'company_dna_analysis': raw.get('company_dna_analysis', {}),
             'conclusion': raw.get('conclusion', ''),
             'evaluated_at': datetime.now().isoformat() + 'Z',
-            'evaluated_by': 'Crawler-enricher',
+            'evaluated_by': 'Crawler-enricher-v4',
         }
 
         # 生成報告
@@ -537,3 +668,4 @@ class ContextualScorer:
         """清除職缺快取"""
         self._jobs_cache.clear()
         self._all_jobs_cache = None
+        self._job_system_cache.clear()  # v4: 清除 system prompt 快取
