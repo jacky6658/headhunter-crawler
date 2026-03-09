@@ -323,9 +323,25 @@ def system_push():
                 if job_id:
                     c['step1ne_job_id'] = job_id
 
-    # 推送前將 status 設為 Step1ne 的初篩狀態（爬蟲內部 status 如 'new'/'imported' 不應洩漏）
+    # 推送前資料處理
     for c in candidates:
+        # status 設為 Step1ne 的初篩狀態（爬蟲內部 status 如 'new'/'imported' 不應洩漏）
         c['status'] = '爬蟲初篩'
+
+        # work_history / education_details 如果是 JSON 字串，解析為物件
+        # （LocalStore 以字串存放，但 Step1ne 的 crawlerImportService 預期物件）
+        for field in ('work_history', 'education_details', 'ai_match_result'):
+            val = c.get(field)
+            if isinstance(val, str) and val.startswith('['):
+                try:
+                    c[field] = json.loads(val)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+            elif isinstance(val, str) and val.startswith('{'):
+                try:
+                    c[field] = json.loads(val)
+                except (json.JSONDecodeError, ValueError):
+                    pass
 
     # 使用新版匯入端點（v2），由 Step1ne 端做欄位映射
     result = client.push_candidates_v2(candidates, actor='Crawler-WebUI')
@@ -923,13 +939,18 @@ def enrich_analyze():
     candidate_data = data.get('candidate', {})
     job_id = data.get('job_id')
 
-    if not linkedin_url and not candidate_data.get('linkedin_url'):
-        return jsonify({'error': '需要 linkedin_url'}), 400
+    # 允許無 LinkedIn URL 的候選人（用姓名搜尋）
+    has_linkedin = linkedin_url or candidate_data.get('linkedin_url')
+    has_name = candidate_data.get('name', '').strip()
+    force = data.get('force', False)  # 強制重新分析（跳過快取）
+
+    if not has_linkedin and not has_name:
+        return jsonify({'error': '需要 linkedin_url 或候選人 name'}), 400
 
     # 組合候選人資料
     if not candidate_data:
-        candidate_data = {'linkedin_url': linkedin_url}
-    elif not candidate_data.get('linkedin_url'):
+        candidate_data = {'linkedin_url': linkedin_url} if linkedin_url else {}
+    elif linkedin_url and not candidate_data.get('linkedin_url'):
         candidate_data['linkedin_url'] = linkedin_url
 
     # 如果有 candidate_id，從 Sheets 讀取完整資料
@@ -948,8 +969,8 @@ def enrich_analyze():
         enricher = components['enricher']
         scorer = components['scorer']
 
-        # Step 1: 深度分析 LinkedIn 頁面
-        enriched = enricher.enrich_candidate(candidate_data)
+        # Step 1: 深度分析（LinkedIn 頁面 或 姓名搜尋）
+        enriched = enricher.enrich_candidate(candidate_data, force=force)
 
         # Step 2: 職缺匹配評分（如果有 job_id）
         ai_match = None
@@ -1077,6 +1098,125 @@ def enrich_stats():
             'error': str(e),
             'message': 'Enrichment 系統尚未初始化',
         })
+
+
+@api_bp.route('/enrich/clear-cache', methods=['POST'])
+def enrich_clear_cache():
+    """清除空/失敗的 enrichment 快取，強制下次重新分析"""
+    try:
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+        result = enricher.clear_stale_cache()
+        return jsonify({
+            'success': True,
+            'message': f"已清除 {result['cleared']} 筆空/失敗快取，保留 {result['kept']} 筆有效",
+            **result,
+        })
+    except Exception as e:
+        logger.error(f"清除快取失敗: {e}", exc_info=True)
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
+@api_bp.route('/enrich/re-enrich', methods=['POST'])
+def enrich_re_enrich():
+    """
+    重新 enrich 指定客戶的所有候選人（清除快取 + 強制分析）
+
+    Body: {
+        "client_name": "xxx",           # 客戶名稱（從本地儲存讀取）
+        "only_empty": true,             # 只處理缺少工作經歷/學歷的候選人（預設 true）
+        "job_id": 123 (optional),       # Step1ne 職缺 ID（用於 AI 評分）
+    }
+    """
+    data = request.get_json()
+    client_name = data.get('client_name', '')
+    only_empty = data.get('only_empty', True)
+    job_id = data.get('job_id')
+
+    if not client_name:
+        return jsonify({'error': '需要 client_name'}), 400
+
+    store = _get_sheets_store()
+    if not store:
+        return jsonify({'error': '本地儲存未初始化'}), 500
+
+    try:
+        # 讀取所有候選人
+        result = store.read_candidates(client_name=client_name, limit=500)
+        all_candidates = result.get('data', [])
+
+        if not all_candidates:
+            return jsonify({'error': f'找不到 {client_name} 的候選人'}), 404
+
+        # 篩選需要重新 enrich 的候選人
+        if only_empty:
+            candidates = [
+                c for c in all_candidates
+                if not c.get('work_history') and not c.get('education_details')
+            ]
+        else:
+            candidates = all_candidates
+
+        if not candidates:
+            return jsonify({
+                'success': True,
+                'message': '所有候選人已有完整資料，無需重新分析',
+                'total': len(all_candidates),
+                'enriched': 0,
+            })
+
+        # 清除空快取
+        components = _get_enrichment_components()
+        enricher = components['enricher']
+        scorer = components['scorer']
+        cache_result = enricher.clear_stale_cache()
+
+        # 批量 enrich（強制模式）— 逐一處理並即時更新 store
+        enriched_results = []
+        success_count = 0
+        for c in candidates:
+            try:
+                enriched = enricher.enrich_candidate(c, force=True)
+                if enriched.get('success'):
+                    success_count += 1
+                    # 提取可更新欄位（排除內部欄位和空值）
+                    update_fields = {
+                        k: v for k, v in enriched.items()
+                        if not k.startswith('_') and k != 'success' and v
+                    }
+                    # 即時更新 store 中的候選人
+                    if update_fields:
+                        store.update_candidate_fields(
+                            client_name, c.get('name', ''), update_fields
+                        )
+
+                enriched_results.append({
+                    'name': c.get('name', ''),
+                    'success': enriched.get('success', False),
+                    'source': enriched.get('_enrichment_source', ''),
+                    'has_work_history': bool(enriched.get('work_history')),
+                    'has_education': bool(enriched.get('education_details')),
+                })
+            except Exception as e:
+                enriched_results.append({
+                    'name': c.get('name', ''),
+                    'success': False,
+                    'error': str(e),
+                })
+
+        return jsonify({
+            'success': True,
+            'total': len(all_candidates),
+            'processed': len(candidates),
+            'enriched_success': success_count,
+            'cache_cleared': cache_result.get('cleared', 0),
+            'results': enriched_results,
+            'usage': enricher.get_stats(),
+        })
+
+    except Exception as e:
+        logger.error(f"重新 enrich 失敗: {e}", exc_info=True)
+        return jsonify({'error': f'重新 enrich 失敗: {str(e)}', 'success': False}), 500
 
 
 # ── LinkedIn API 狀態 ─────────────────────────────────────────

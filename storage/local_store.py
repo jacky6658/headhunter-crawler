@@ -147,6 +147,25 @@ class LocalStore:
         """列出所有客戶"""
         return list(self._candidates.keys())
 
+    def update_candidate_fields(self, client_name: str, candidate_name: str, fields: dict) -> bool:
+        """根據姓名更新候選人的指定欄位（用於 enrichment 更新）"""
+        with self._write_lock:
+            records = self._candidates.get(client_name, [])
+            for r in records:
+                if (r.get('name', '').strip().lower() == candidate_name.strip().lower()):
+                    for k, v in fields.items():
+                        if v is not None and v != '' and v != [] and v != {}:
+                            # work_history / education_details 特殊處理
+                            if k in ('work_history', 'education_details') and isinstance(v, list):
+                                r[k] = json.dumps(v, ensure_ascii=False)
+                            else:
+                                r[k] = v
+                    self._save_candidates()
+                    logger.info(f"更新 {candidate_name} enrichment 欄位: {list(fields.keys())}")
+                    return True
+            logger.warning(f"找不到候選人 {candidate_name} in {client_name}")
+            return False
+
     def update_candidate_status(self, client_name: str, candidate_id: str, status: str):
         """更新候選人狀態"""
         with self._write_lock:

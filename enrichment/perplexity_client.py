@@ -93,11 +93,11 @@ class PerplexityClient:
                 }
             ],
             'temperature': 0.1,  # 低溫度確保穩定輸出
-            'max_tokens': 2000,
+            'max_tokens': 4000,  # 足夠容納完整工作經歷+學歷 JSON
+            'web_search_options': {
+                'search_context_size': 'high',  # 深度搜尋（與網頁版一致）
+            },
         }
-
-        # 注意: Perplexity API 已不支援 response_format: json_object
-        # 改為依賴 system prompt 指令 + _parse_json_response() 解析
 
         last_error = None
         for attempt in range(self.max_retries + 1):

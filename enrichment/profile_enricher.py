@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Callable
 
 from .perplexity_client import PerplexityClient
 from .jina_reader import JinaReader
-from .prompts import PROFILE_ANALYSIS_PROMPT, JINA_TEXT_PARSE_PROMPT
+from .prompts import PROFILE_ANALYSIS_PROMPT, JINA_TEXT_PARSE_PROMPT, NAME_SEARCH_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -77,74 +77,83 @@ class ProfileEnricher:
             'start_time': datetime.now().isoformat(),
         }
 
-    def enrich_candidate(self, candidate: dict) -> dict:
+    def enrich_candidate(self, candidate: dict, force: bool = False) -> dict:
         """
-        分析一位候選人的 LinkedIn 頁面
+        分析一位候選人的專業背景
+
+        支援兩種模式：
+        1. 有 LinkedIn URL → 用 LinkedIn API / Perplexity / Jina 分析
+        2. 無 LinkedIn URL 但有 name+company → 用 Perplexity 搜尋姓名
 
         Args:
-            candidate: 候選人 dict (需含 linkedin_url)
+            candidate: 候選人 dict (需含 linkedin_url 或 name)
+            force: 強制重新分析（忽略快取）
 
         Returns:
-            dict: 充實後的候選人資料，包含:
-                - work_history (list of dict) → JSONB
-                - education_details (list of dict) → JSONB
-                - years_experience (str)
-                - stability_score (str)
-                - job_changes (str)
-                - avg_tenure_months (str)
-                - recent_gap_months (str)
-                - current_position (str)
-                - education (str)
-                - skills (str, 用「、」連接)
-                - enrichment_notes (str)
-                - _enrichment_source (str): 'perplexity' | 'jina' | 'failed'
-                - _enrichment_raw (dict): 原始分析結果
+            dict: 充實後的候選人資料
         """
         self._stats['total_calls'] += 1
         linkedin_url = candidate.get('linkedin_url', '')
+        name = candidate.get('name', '').strip()
 
-        if not linkedin_url:
-            logger.warning(f"候選人 {candidate.get('name', '?')} 沒有 LinkedIn URL，跳過深度分析")
-            return self._build_empty_result(candidate, '無 LinkedIn URL')
+        # 決定 cache key：有 LinkedIn URL 用 URL，否則用 name
+        cache_key = linkedin_url or (f"name:{name}" if name else '')
 
-        # v4 P2: 檢查快取 — 同一 LinkedIn URL 不重複 enrich
-        cached = self._get_cached(linkedin_url)
-        if cached:
-            self._stats['cache_hits'] = self._stats.get('cache_hits', 0) + 1
-            logger.info(f"enrichment cache hit: {candidate.get('name', '?')} ({linkedin_url[:50]}...)")
-            return cached
+        if not linkedin_url and not name:
+            logger.warning(f"候選人無 LinkedIn URL 也無姓名，跳過深度分析")
+            return self._build_empty_result(candidate, '無 LinkedIn URL 且無姓名')
 
-        # 依照 provider_priority 順序嘗試
-        for provider in self.provider_priority:
-            result = None
+        # 檢查快取（force=True 時跳過）
+        if not force and cache_key:
+            cached = self._get_cached(cache_key)
+            if cached:
+                self._stats['cache_hits'] = self._stats.get('cache_hits', 0) + 1
+                logger.info(f"enrichment cache hit: {name or '?'} ({cache_key[:50]}...)")
+                return cached
 
-            if provider == 'linkedin' and self.linkedin_api and self.linkedin_api.is_available():
-                result = self._enrich_via_linkedin_api(linkedin_url, candidate)
-                if result and result.get('success'):
-                    self._stats['linkedin_calls'] += 1
-                    self._stats['success'] += 1
-                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
-                    return result
+        # ── 模式 1: 有 LinkedIn URL → 原始流程 ──
+        if linkedin_url:
+            for provider in self.provider_priority:
+                result = None
 
-            elif provider == 'perplexity' and self.perplexity and self.perplexity.is_available():
-                result = self._enrich_via_perplexity(linkedin_url, candidate)
-                if result and result.get('success'):
-                    self._stats['perplexity_calls'] += 1
-                    self._stats['success'] += 1
-                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
-                    return result
+                if provider == 'linkedin' and self.linkedin_api and self.linkedin_api.is_available():
+                    result = self._enrich_via_linkedin_api(linkedin_url, candidate)
+                    if result and result.get('success'):
+                        self._stats['linkedin_calls'] += 1
+                        self._stats['success'] += 1
+                        self._set_cached(cache_key, result)
+                        return result
 
-            elif provider == 'jina' and self.jina and self.jina.is_available():
-                result = self._enrich_via_jina(linkedin_url, candidate)
-                if result and result.get('success'):
-                    self._stats['jina_calls'] += 1
-                    self._stats['success'] += 1
-                    self._set_cached(linkedin_url, result)  # v4 P2: 寫入快取
-                    return result
+                elif provider == 'perplexity' and self.perplexity and self.perplexity.is_available():
+                    result = self._enrich_via_perplexity(linkedin_url, candidate)
+                    if result and result.get('success'):
+                        self._stats['perplexity_calls'] += 1
+                        self._stats['success'] += 1
+                        self._set_cached(cache_key, result)
+                        return result
 
-        # 所有 provider 都失敗
+                elif provider == 'jina' and self.jina and self.jina.is_available():
+                    result = self._enrich_via_jina(linkedin_url, candidate)
+                    if result and result.get('success'):
+                        self._stats['jina_calls'] += 1
+                        self._stats['success'] += 1
+                        self._set_cached(cache_key, result)
+                        return result
+
+        # ── 模式 2: 用姓名搜尋（無 LinkedIn URL、或 LinkedIn 分析結果空白時的備援）──
+        if name and self.perplexity and self.perplexity.is_available():
+            reason = '無 LinkedIn URL' if not linkedin_url else 'LinkedIn 分析結果不足'
+            logger.info(f"候選人 {name} {reason}，嘗試用姓名搜尋")
+            result = self._enrich_via_name_search(candidate)
+            if result and result.get('success'):
+                self._stats['perplexity_calls'] += 1
+                self._stats['success'] += 1
+                self._set_cached(cache_key, result)
+                return result
+
+        # 所有方法都失敗
         self._stats['failed'] += 1
-        logger.warning(f"候選人 {candidate.get('name', '?')} 深度分析全部失敗")
+        logger.warning(f"候選人 {name or '?'} 深度分析全部失敗")
         return self._build_empty_result(candidate, '所有分析來源都失敗')
 
     def enrich_batch(self, candidates: list, on_progress: Callable = None) -> list:
@@ -232,6 +241,39 @@ class ProfileEnricher:
 
         except Exception as e:
             logger.error(f"Perplexity 分析異常: {e}", exc_info=True)
+            return None
+
+    def _enrich_via_name_search(self, candidate: dict) -> Optional[dict]:
+        """用 Perplexity 搜尋候選人姓名+公司，取得背景資料（無 LinkedIn URL 時使用）"""
+        try:
+            name = candidate.get('name', '').strip()
+            company = candidate.get('company', '') or candidate.get('organization', '') or ''
+            title = candidate.get('title', '') or candidate.get('current_position', '') or ''
+            location = candidate.get('location', '') or ''
+            github_url = candidate.get('github_url', '') or candidate.get('github', '') or ''
+            skills = candidate.get('skills', '')
+            if isinstance(skills, list):
+                skills = ', '.join(skills)
+
+            prompt = NAME_SEARCH_PROMPT.format(
+                name=name,
+                company=company,
+                title=title,
+                location=location,
+                github_url=github_url,
+                skills=skills or '未知',
+            )
+
+            raw = self.perplexity.analyze_profile('', prompt)
+
+            if not raw or not raw.get('success'):
+                logger.warning(f"姓名搜尋分析失敗 ({name}): {raw.get('error', '未知錯誤')}")
+                return None
+
+            return self._normalize_enrichment(raw, candidate, 'name_search')
+
+        except Exception as e:
+            logger.error(f"姓名搜尋分析異常 ({candidate.get('name', '?')}): {e}", exc_info=True)
             return None
 
     def _enrich_via_jina(self, linkedin_url: str, candidate: dict) -> Optional[dict]:
@@ -466,6 +508,37 @@ class ProfileEnricher:
 
         return min(100, score)
 
+    def clear_stale_cache(self) -> dict:
+        """清除快取中的空結果 / 失敗結果，強制下次重新 enrich"""
+        cleared = 0
+        kept = 0
+        with self._cache_lock:
+            keys_to_remove = []
+            for key, entry in self._enrichment_cache.items():
+                result = entry.get('result', {})
+                # 移除失敗的
+                if not result.get('success'):
+                    keys_to_remove.append(key)
+                    continue
+                # 移除空結果（無 work_history 且無 education_details 且無 skills）
+                has_work = bool(result.get('work_history'))
+                has_edu = bool(result.get('education_details'))
+                has_skills = bool(result.get('skills'))
+                if not has_work and not has_edu and not has_skills:
+                    keys_to_remove.append(key)
+                    continue
+                kept += 1
+
+            for key in keys_to_remove:
+                self._enrichment_cache.pop(key, None)
+                cleared += 1
+
+        if cleared > 0:
+            self._save_cache()
+
+        logger.info(f"enrichment cache 清理: 移除 {cleared} 筆空/失敗結果, 保留 {kept} 筆有效")
+        return {'cleared': cleared, 'kept': kept}
+
     def get_stats(self) -> dict:
         """回傳使用統計"""
         stats = {**self._stats}
@@ -505,34 +578,48 @@ class ProfileEnricher:
             except Exception as e:
                 logger.error(f"enrichment cache 儲存失敗: {e}")
 
-    def _get_cached(self, linkedin_url: str) -> Optional[dict]:
-        """查詢快取（含 TTL 檢查）"""
-        if not linkedin_url:
+    def _get_cached(self, cache_key: str) -> Optional[dict]:
+        """查詢快取（含 TTL 檢查 + 空結果過濾）"""
+        if not cache_key:
             return None
-        entry = self._enrichment_cache.get(linkedin_url)
+        entry = self._enrichment_cache.get(cache_key)
         if not entry:
             return None
         try:
             cached_at = datetime.fromisoformat(entry.get('cached_at', ''))
             age_days = (datetime.now() - cached_at).days
             if age_days > self._cache_ttl_days:
-                logger.info(f"enrichment cache 過期: {linkedin_url[:50]}... ({age_days} days old)")
+                logger.info(f"enrichment cache 過期: {cache_key[:50]}... ({age_days} days old)")
                 with self._cache_lock:
-                    self._enrichment_cache.pop(linkedin_url, None)
+                    self._enrichment_cache.pop(cache_key, None)
                 return None
         except (ValueError, TypeError):
             with self._cache_lock:
-                self._enrichment_cache.pop(linkedin_url, None)
+                self._enrichment_cache.pop(cache_key, None)
             return None
-        return entry.get('result')
 
-    def _set_cached(self, linkedin_url: str, result: dict):
+        result = entry.get('result')
+
+        # 過濾「假成功」的空結果：標記為成功但 work_history 和 education_details 都為空
+        if result and result.get('success'):
+            has_work = bool(result.get('work_history'))
+            has_edu = bool(result.get('education_details'))
+            has_skills = bool(result.get('skills'))
+            if not has_work and not has_edu and not has_skills:
+                logger.info(f"enrichment cache 空結果淘汰: {cache_key[:50]}... (無工作/學歷/技能)")
+                with self._cache_lock:
+                    self._enrichment_cache.pop(cache_key, None)
+                return None
+
+        return result
+
+    def _set_cached(self, cache_key: str, result: dict):
         """寫入快取"""
-        if not linkedin_url:
+        if not cache_key:
             return
         with self._cache_lock:
             cache_result = {k: v for k, v in result.items() if k != '_enrichment_raw'}
-            self._enrichment_cache[linkedin_url] = {
+            self._enrichment_cache[cache_key] = {
                 'cached_at': datetime.now().isoformat(),
                 'result': cache_result,
             }
