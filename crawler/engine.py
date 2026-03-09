@@ -478,18 +478,50 @@ class SearchEngine:
             url = 'https://' + url[7:]
         return url
 
+    # ── 公司/組織名稱過濾 ──────────────────────────────────
+    _ORG_NAME_KEYWORDS = [
+        ' co.', ' co,', ' ltd', ' inc.', ' inc,', ' llc', ' corp', ' gmbh',
+        '有限公司', '股份有限公司', 'collective', 'air tools',
+    ]
+    _ORG_NAME_BLOCKLIST = {
+        'sparkful', 'sparkup!', 'navspark', 'm5-bim', 'bimap',
+        'bimetek', 'airboss air tools',
+    }
+
+    @classmethod
+    def _is_org_name(cls, name: str) -> bool:
+        """檢查名稱是否為公司/組織（非個人）"""
+        if not name:
+            return False
+        nl = name.strip().lower()
+        # 關鍵字匹配
+        for kw in cls._ORG_NAME_KEYWORDS:
+            if kw in nl:
+                return True
+        # 已知黑名單
+        if nl in cls._ORG_NAME_BLOCKLIST:
+            return True
+        # 域名格式
+        if '.' in nl and any(nl.endswith(ext) for ext in ['.io', '.com', '.org', '.net', '.ai']):
+            return True
+        return False
+
     def _merge_and_dedup(self, linkedin_data: list, github_data: list) -> List[Candidate]:
         """
-        合併 LinkedIn + GitHub 結果，跨來源去重
+        合併 LinkedIn + GitHub 結果，跨來源去重 + 組織帳號過濾
 
         去重策略：
         1. LinkedIn URL 正規化比對（跨來源）
         2. GitHub username 精確比對
         3. GitHub 候選人若 LinkedIn URL 已被 LinkedIn 候選人佔有 → 合併資料（不新增）
+        過濾策略：
+        4. 名稱含公司關鍵字 → 跳過
+        5. GitHub type=Organization → 已在 github.py 過濾
         """
         candidates = []
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         today = datetime.now().strftime('%Y-%m-%d')
+        org_filtered = 0
 
         # ── 跨來源 LinkedIn URL 索引 ──
         # key: normalized linkedin_url → value: candidates list 中的 index
@@ -504,6 +536,12 @@ class SearchEngine:
 
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
+                continue
+
+            # 組織/公司名稱過濾
+            if self._is_org_name(name):
+                org_filtered += 1
+                logger.info(f"過濾組織帳號 (LinkedIn): {name}")
                 continue
 
             source = 'li+ocr' if item.get('ocr_used') else 'linkedin'
@@ -542,6 +580,12 @@ class SearchEngine:
 
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
+                continue
+
+            # 組織/公司名稱過濾（GitHub type=Organization 已在 github.py 過濾，這裡再檢查名稱）
+            if self._is_org_name(name):
+                org_filtered += 1
+                logger.info(f"過濾組織帳號 (GitHub): {name} (@{gh_username})")
                 continue
 
             skills = item.get('skills', [])
@@ -637,5 +681,7 @@ class SearchEngine:
 
         if merged_count:
             logger.info(f"跨來源去重完成: 合併 {merged_count} 位重複候選人 (LinkedIn+GitHub)")
+        if org_filtered:
+            logger.info(f"組織帳號過濾: 排除 {org_filtered} 個公司/組織帳號")
 
         return candidates

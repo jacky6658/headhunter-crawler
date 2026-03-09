@@ -18,6 +18,18 @@ GITHUB_API = "https://api.github.com"
 class GitHubSearcher:
     """GitHub 人才搜尋，支援多 token 輪換"""
 
+    # ── 公司/組織帳號過濾器 ──────────────────────────────────
+    # 名稱含這些關鍵字的視為非個人帳號，自動跳過
+    ORG_NAME_KEYWORDS = [
+        ' co.', ' co,', ' ltd', ' inc.', ' inc,', ' llc', ' corp', ' gmbh',
+        '有限公司', '股份有限公司', 'collective', ' group',
+    ]
+    # 完全匹配的已知組織名（小寫）
+    ORG_NAME_BLOCKLIST = {
+        'sparkful', 'sparkup!', 'navspark', 'm5-bim', 'bimap',
+        'bimetek', 'airboss air tools',
+    }
+
     def __init__(self, config: dict, anti_detect, stop_event=None):
         self.config = config
         self.ad = anti_detect
@@ -42,6 +54,39 @@ class GitHubSearcher:
     def _is_stopped(self) -> bool:
         """檢查是否被要求停止"""
         return self.stop_event is not None and self.stop_event.is_set()
+
+    @classmethod
+    def _is_org_account(cls, user: dict) -> bool:
+        """
+        檢查 GitHub 帳號是否為組織/公司帳號（非個人）
+
+        判斷依據：
+        1. GitHub API type 欄位 == 'Organization'
+        2. 名稱含公司關鍵字（Co., Ltd, Inc, 有限公司...）
+        3. 名稱是已知組織名
+        4. 名稱是域名格式（xxx.io, xxx.com）
+        """
+        # 1. GitHub API 明確標記
+        if (user.get('type', '') or '').lower() == 'organization':
+            return True
+
+        name = (user.get('name') or user.get('login', '')).strip()
+        name_lower = name.lower()
+
+        # 2. 名稱含公司關鍵字
+        for kw in cls.ORG_NAME_KEYWORDS:
+            if kw in name_lower:
+                return True
+
+        # 3. 已知組織名
+        if name_lower in cls.ORG_NAME_BLOCKLIST:
+            return True
+
+        # 4. 域名格式
+        if '.' in name_lower and any(name_lower.endswith(ext) for ext in ['.io', '.com', '.org', '.net', '.ai']):
+            return True
+
+        return False
 
     # ── Token 管理 ───────────────────────────────────────────
 
@@ -266,6 +311,12 @@ class GitHubSearcher:
             if s1 != 200:
                 return None
 
+            # ── 組織/公司帳號過濾 ──
+            if self._is_org_account(user):
+                org_name = user.get('name') or username
+                logger.info(f"跳過組織帳號: {org_name} (@{username}) [type={user.get('type', '?')}]")
+                return None
+
             params = urlencode({'sort': 'updated', 'per_page': 10, 'type': 'owner'})
             repos, s2 = self.ad.http_get_json(
                 f"{GITHUB_API}/users/{username}/repos?{params}",
@@ -342,6 +393,12 @@ class GitHubSearcher:
                 )
             if s1 != 200:
                 logger.warning(f"GitHub deep_analyze 用戶 API 失敗 ({username}): {s1}")
+                return None
+
+            # ── 組織/公司帳號過濾 ──
+            if self._is_org_account(user):
+                org_name = user.get('name') or username
+                logger.info(f"[deep_analyze] 跳過組織帳號: {org_name} (@{username}) [type={user.get('type', '?')}]")
                 return None
 
             # 2. 完整 repo 列表（按 star 排序，最多 100 個）
