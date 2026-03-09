@@ -1,10 +1,11 @@
 """
-搜尋引擎主控 — 整合 LinkedIn + GitHub + OCR + 去重 + AI 深度分析 + 評分
+搜尋引擎主控 — 整合 LinkedIn + GitHub + OCR + 去重 + Enrichment + 規則式評分
 
 Pipeline:
   Phase 1: LinkedIn + GitHub 搜尋 → merge_and_dedup
+  Phase 1.5: 相關性篩選
   Phase 2: ProfileEnricher 補完履歷（work_history, education, stability...）
-  Phase 3: ContextualScorer AI 5 維度評分 (或 fallback 關鍵字評分)
+  Phase 3: 規則式關鍵字評分 + match_tags 生成
 """
 import json as _json
 import logging
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class SearchEngine:
-    """整合所有搜尋來源 + AI 深度分析 + 評分"""
+    """整合所有搜尋來源 + Enrichment + 規則式評分"""
 
     def __init__(self, config: dict, task: SearchTask, job_context: dict = None):
         self.config = config
@@ -66,29 +67,15 @@ class SearchEngine:
             except Exception as e:
                 logger.warning(f"ProfileEnricher 初始化失敗: {e}")
 
-        # === Phase 3: ContextualScorer (已實作模組) ===
-        self.contextual_scorer = None
-        if self.job_context and self.task.step1ne_job_id:
-            try:
-                from enrichment.contextual_scorer import ContextualScorer
-                from integration.step1ne_client import Step1neClient
-                step1ne_cfg = config.get('step1ne', {})
-                step1ne_client = Step1neClient(step1ne_cfg.get('api_base_url', ''))
-                # enrichment_cfg 已包含 perplexity 子設定，直接傳入
-                scorer_config = enrichment_cfg
-                self.contextual_scorer = ContextualScorer(scorer_config, step1ne_client)
-                logger.info("ContextualScorer 已初始化")
-            except Exception as e:
-                logger.warning(f"ContextualScorer 初始化失敗: {e}")
-
         self.on_progress: Optional[Callable] = None
 
     def execute(self) -> List[Candidate]:
         """
         執行搜尋任務 (4 Phase Pipeline):
           Phase 1: LinkedIn + GitHub 搜尋 → merge_and_dedup
+          Phase 1.5: 相關性篩選
           Phase 2: ProfileEnricher 補完履歷
-          Phase 3: AI 5 維度評分 (或 fallback 關鍵字評分)
+          Phase 3: 規則式關鍵字評分 + match_tags 生成
           Phase 4: 排序 + 儲存
         """
         skills = self.task.all_skills
@@ -154,32 +141,20 @@ class SearchEngine:
             else:
                 logger.info("[Phase 2] 跳過 (無候選人)")
 
-        # ═══ Phase 3: AI 評分 or 關鍵字評分 ═══
-        if self.contextual_scorer and self.job_context and self.task.step1ne_job_id:
-            logger.info(f"[Phase 3] AI 5 維度評分 (job_id={self.task.step1ne_job_id})...")
-            candidates = self._ai_score_candidates(candidates)
-        else:
-            logger.info("[Phase 3] 關鍵字評分 (無職缺畫像)")
-            candidates = self._score_candidates(candidates)
+        # ═══ Phase 3: 規則式關鍵字評分 + match_tags ═══
+        logger.info("[Phase 3] 規則式關鍵字評分 + match_tags 生成...")
+        candidates = self._score_candidates(candidates)
+        self._generate_match_tags(candidates)
 
         # ═══ Phase 4: 排序 ═══
-        # AI 分數優先，fallback 關鍵字分數
-        candidates.sort(key=lambda c: c.ai_score or c.score, reverse=True)
+        candidates.sort(key=lambda c: c.score, reverse=True)
 
         # 統計
-        ai_grades = {}
         kw_grades = {}
         for c in candidates:
-            g = c.ai_grade or c.grade
-            if c.ai_score > 0:
-                ai_grades[g] = ai_grades.get(g, 0) + 1
-            else:
-                kw_grades[g] = kw_grades.get(g, 0) + 1
-
-        if ai_grades:
-            logger.info(f"AI 評分結果: {ai_grades}")
-        if kw_grades:
-            logger.info(f"關鍵字評分結果: {kw_grades}")
+            g = c.grade or 'N/A'
+            kw_grades[g] = kw_grades.get(g, 0) + 1
+        logger.info(f"關鍵字評分結果: {kw_grades}")
 
         # 儲存去重快取
         self.dedup.save()
@@ -316,84 +291,79 @@ class SearchEngine:
         logger.info(f"Phase 2 完成: {enriched_count}/{len(candidates)} 位成功充實")
         return candidates
 
-    # ── Phase 3: AI 評分 ─────────────────────────────────────
+    # ── Phase 3b: match_tags 生成 ─────────────────────────────
 
-    def _ai_score_candidates(self, candidates: List[Candidate]) -> List[Candidate]:
+    def _generate_match_tags(self, candidates: List[Candidate]):
         """
-        用 ContextualScorer 做 AI 5 維度匹配評分
+        根據規則式評分結果，為每位候選人生成 match_tags
+        寫入 ai_match_result 欄位（JSON），供 Step1ne AI 工作進度頁面使用
 
-        包含：人才畫像符合度 + JD 匹配度 + 公司 DNA 適配性 + 可觸達性 + 活躍信號
-        v4 P0: 加入預篩 — quick_skill_match + title 檢查，跳過明顯不相關的候選人
+        match_tags 結構:
+          skill_match: []    — 匹配到的技能列表
+          title_match: bool  — 職缺名稱是否匹配
+          experience_match: [] — 匹配到的工作經歷關鍵字
         """
-        job_id = self.task.step1ne_job_id
-        scored_ai = 0
-        scored_fallback = 0
-        skipped_prefilter = 0  # v4 P0: 新增計數器
+        job_title = (self.task.job_title or '').lower()
+        # 建立標題關鍵字集合（用於 title_match）
+        title_words = set(w for w in job_title.split() if len(w) >= 2)
 
-        for i, candidate in enumerate(candidates):
+        for candidate in candidates:
             try:
-                if self.on_progress:
-                    self.on_progress(i + 1, len(candidates), i + 1,
-                                     f"AI 評分 ({candidate.name})")
+                # skill_match: 從 score_detail 提取 matched_skills
+                matched_skills = []
+                if candidate.score_detail:
+                    try:
+                        detail = _json.loads(candidate.score_detail) if isinstance(candidate.score_detail, str) else candidate.score_detail
+                        # score_detail 格式: {must_have: {matched:[], missing:[]}, core: {...}, ...}
+                        for cat in ('must_have', 'core', 'nice_to_have'):
+                            cat_data = detail.get(cat, {})
+                            if isinstance(cat_data, dict):
+                                matched_skills.extend(cat_data.get('matched', []))
+                    except Exception:
+                        pass
 
-                # 準備 enriched dict (含 enrichment 補完的資料)
-                c_dict = candidate.to_dict()
+                # title_match: 候選人職稱是否包含職缺名稱關鍵字
+                candidate_title = (getattr(candidate, 'title', '') or '').lower()
+                title_match = False
+                if title_words and candidate_title:
+                    # 至少一半的職缺標題關鍵字出現在候選人職稱中
+                    hit_count = sum(1 for w in title_words if w in candidate_title)
+                    title_match = hit_count >= max(1, len(title_words) // 2)
 
-                # v4 P0: 預篩 — 跳過明顯不相關的候選人，省 API call
-                if self.job_context and not self.contextual_scorer.should_ai_score(c_dict, self.job_context):
-                    self._fallback_keyword_score(candidate)
-                    skipped_prefilter += 1
-                    continue
+                # experience_match: 從 work_history 提取相關工作經歷
+                experience_match = []
+                work_history = getattr(candidate, 'work_history', []) or []
+                if isinstance(work_history, list):
+                    all_skills_lower = set(s.lower() for s in (self.task.primary_skills or []))
+                    for wh in work_history[:5]:  # 只看最近 5 段
+                        if isinstance(wh, dict):
+                            wh_title = (wh.get('title', '') or '').lower()
+                            wh_desc = (wh.get('description', '') or '').lower()
+                            wh_text = f"{wh_title} {wh_desc}"
+                            # 檢查是否有技能或職稱關鍵字命中
+                            hits = [s for s in all_skills_lower if s in wh_text]
+                            if hits or any(w in wh_title for w in title_words if len(w) >= 3):
+                                company = wh.get('company', '')
+                                exp_label = f"{wh.get('title', '')} @ {company}" if company else wh.get('title', '')
+                                if exp_label:
+                                    experience_match.append(exp_label)
 
-                # 呼叫 ContextualScorer.score_with_job_context
-                result = self.contextual_scorer.score_with_job_context(c_dict, job_id)
-
-                if result.get('success'):
-                    ai_match = result.get('ai_match_result', {})
-                    candidate.ai_score = int(ai_match.get('score', 0))
-
-                    # 用 ContextualScorer 的等級映射
-                    candidate.ai_grade = result.get('talent_level', '')
-                    candidate.ai_recommendation = ai_match.get('recommendation', '')
-                    candidate.ai_match_result = _json.dumps(ai_match, ensure_ascii=False)
-                    candidate.ai_report = result.get('report', '')
-
-                    # 同步到舊的 score/grade 欄位（讓排序和推送邏輯一致）
-                    candidate.score = candidate.ai_score
-                    candidate.grade = candidate.ai_grade
-
-                    scored_ai += 1
-                    logger.debug(f"AI 評分: {candidate.name} → {candidate.ai_score}分 ({candidate.ai_grade})")
-                else:
-                    # AI 評分失敗 → fallback 關鍵字評分
-                    self._fallback_keyword_score(candidate)
-                    scored_fallback += 1
+                # 寫入 ai_match_result
+                match_tags = {
+                    'skill_match': matched_skills,
+                    'title_match': title_match,
+                    'experience_match': experience_match,
+                }
+                candidate.ai_match_result = _json.dumps(
+                    {'match_tags': match_tags},
+                    ensure_ascii=False
+                )
 
             except Exception as e:
-                logger.error(f"AI 評分失敗 ({candidate.name}): {e}")
-                self._fallback_keyword_score(candidate)
-                scored_fallback += 1
+                logger.error(f"match_tags 生成失敗 ({candidate.name}): {e}")
 
-        logger.info(f"Phase 3 完成: AI 評分 {scored_ai} 位, 預篩跳過 {skipped_prefilter} 位, fallback {scored_fallback} 位")
-        return candidates
-
-    def _fallback_keyword_score(self, candidate: Candidate):
-        """單一候選人的 fallback 關鍵字評分"""
-        try:
-            job_profile = self.profile_manager.load_profile(
-                client_name=self.task.client_name,
-                job_title=self.task.job_title,
-                primary_skills=self.task.primary_skills,
-                secondary_skills=self.task.secondary_skills,
-                location=self.task.location,
-            )
-            c_dict = candidate.to_dict()
-            result = self.scoring_engine.score_candidate(c_dict, job_profile)
-            candidate.score = result['total_score']
-            candidate.grade = result['grade']
-            candidate.score_detail = ScoringEngine.score_to_detail_json(result)
-        except Exception as e:
-            logger.error(f"Fallback 評分也失敗 ({candidate.name}): {e}")
+        tagged = sum(1 for c in candidates if c.ai_match_result)
+        logger.info(f"match_tags 生成完成: {tagged}/{len(candidates)} 位")
 
     # ── Phase 1.5: 相關性篩選 ──────────────────────────────
 

@@ -268,6 +268,9 @@ class TaskManager:
                 # 把任務關聯的 step1ne_job_id 附加到每位候選人，用於設定目標職缺
                 if task.step1ne_job_id and not d.get('step1ne_job_id'):
                     d['step1ne_job_id'] = task.step1ne_job_id
+                # 爬蟲初篩狀態 — 等待 OpenClaw AI 複篩
+                d['status'] = '爬蟲初篩'
+                d['recruiter'] = '待指派'
                 cand_dicts.append(d)
 
             result = client.push_candidates_v2(cand_dicts, actor='Crawler-AutoPush')
@@ -317,11 +320,11 @@ class TaskManager:
                 f"from Step1ne (id={task.step1ne_job_id})"
             )
 
-            # 如果任務沒有手動設定關鍵字，用 AI 從職缺畫像生成
+            # 如果任務沒有手動設定關鍵字，用規則式從職缺畫像生成
             if not task.primary_skills:
-                task.progress_detail = 'Phase 0: AI 分析關鍵字...'
+                task.progress_detail = 'Phase 0: 規則式關鍵字生成...'
                 self._save_tasks()
-                self._generate_ai_keywords(task, job_data)
+                self._fallback_keywords(task, job_data)
 
             return job_data
 
