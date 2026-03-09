@@ -112,6 +112,7 @@ class ProfileEnricher:
                 return cached
 
         # ── 模式 1: 有 LinkedIn URL → 原始流程 ──
+        linkedin_result_empty = False  # 追蹤 LinkedIn 是否回傳空資料
         if linkedin_url:
             for provider in self.provider_priority:
                 result = None
@@ -119,42 +120,64 @@ class ProfileEnricher:
                 if provider == 'linkedin' and self.linkedin_api and self.linkedin_api.is_available():
                     result = self._enrich_via_linkedin_api(linkedin_url, candidate)
                     if result and result.get('success'):
-                        self._stats['linkedin_calls'] += 1
-                        self._stats['success'] += 1
-                        self._set_cached(cache_key, result)
-                        return result
+                        if self._is_result_meaningful(result):
+                            self._stats['linkedin_calls'] += 1
+                            self._stats['success'] += 1
+                            self._set_cached(cache_key, result)
+                            return result
+                        else:
+                            linkedin_result_empty = True
+                            logger.info(f"LinkedIn API 回傳空資料: {name}，繼續嘗試其他來源")
 
                 elif provider == 'perplexity' and self.perplexity and self.perplexity.is_available():
                     result = self._enrich_via_perplexity(linkedin_url, candidate)
                     if result and result.get('success'):
-                        self._stats['perplexity_calls'] += 1
-                        self._stats['success'] += 1
-                        self._set_cached(cache_key, result)
-                        return result
+                        if self._is_result_meaningful(result):
+                            self._stats['perplexity_calls'] += 1
+                            self._stats['success'] += 1
+                            self._set_cached(cache_key, result)
+                            return result
+                        else:
+                            linkedin_result_empty = True
+                            logger.info(f"Perplexity LinkedIn 分析回傳空資料: {name}，繼續嘗試姓名搜尋")
 
                 elif provider == 'jina' and self.jina and self.jina.is_available():
                     result = self._enrich_via_jina(linkedin_url, candidate)
                     if result and result.get('success'):
-                        self._stats['jina_calls'] += 1
-                        self._stats['success'] += 1
-                        self._set_cached(cache_key, result)
-                        return result
+                        if self._is_result_meaningful(result):
+                            self._stats['jina_calls'] += 1
+                            self._stats['success'] += 1
+                            self._set_cached(cache_key, result)
+                            return result
+                        else:
+                            linkedin_result_empty = True
 
         # ── 模式 2: 用姓名搜尋（無 LinkedIn URL、或 LinkedIn 分析結果空白時的備援）──
         if name and self.perplexity and self.perplexity.is_available():
-            reason = '無 LinkedIn URL' if not linkedin_url else 'LinkedIn 分析結果不足'
+            reason = '無 LinkedIn URL' if not linkedin_url else 'LinkedIn 分析結果不足，可能是隱私設定'
             logger.info(f"候選人 {name} {reason}，嘗試用姓名搜尋")
             result = self._enrich_via_name_search(candidate)
-            if result and result.get('success'):
+            if result and result.get('success') and self._is_result_meaningful(result):
+                # 如果是 LinkedIn 空資料後 fallback 成功，加上備註
+                if linkedin_result_empty:
+                    result['enrichment_notes'] = (
+                        f"⚠️ LinkedIn 不公開，改用姓名搜尋補充資料\n"
+                        + result.get('enrichment_notes', '')
+                    )
                 self._stats['perplexity_calls'] += 1
                 self._stats['success'] += 1
                 self._set_cached(cache_key, result)
                 return result
 
-        # 所有方法都失敗
+        # 所有方法都失敗 — 標註原因
         self._stats['failed'] += 1
-        logger.warning(f"候選人 {name or '?'} 深度分析全部失敗")
-        return self._build_empty_result(candidate, '所有分析來源都失敗')
+        if linkedin_result_empty:
+            reason = '⚠️ LinkedIn 不公開 — 此候選人的 LinkedIn 資料受隱私設定保護，無法取得工作經歷與教育背景'
+            logger.warning(f"候選人 {name or '?'} LinkedIn 不公開，所有搜尋都無法取得完整資料")
+        else:
+            reason = '所有分析來源都失敗'
+            logger.warning(f"候選人 {name or '?'} 深度分析全部失敗")
+        return self._build_empty_result(candidate, reason)
 
     def enrich_batch(self, candidates: list, on_progress: Callable = None) -> list:
         """
@@ -612,6 +635,31 @@ class ProfileEnricher:
                 return None
 
         return result
+
+    @staticmethod
+    def _is_result_meaningful(result: dict) -> bool:
+        """
+        檢查 enrichment 結果是否有實質資料（非空殼）
+
+        判斷條件（至少滿足一項）：
+        - work_history 有至少一筆記錄
+        - education_details 有至少一筆記錄
+        - skills 非空字串
+        """
+        if not result or not isinstance(result, dict):
+            return False
+
+        has_work = bool(result.get('work_history'))
+        has_edu = bool(result.get('education_details'))
+
+        # skills 可能是字串或 list
+        skills = result.get('skills', '')
+        if isinstance(skills, list):
+            has_skills = len(skills) > 0
+        else:
+            has_skills = bool(str(skills).strip())
+
+        return has_work or has_edu or has_skills
 
     def _set_cached(self, cache_key: str, result: dict):
         """寫入快取"""

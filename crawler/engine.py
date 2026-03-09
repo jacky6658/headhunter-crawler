@@ -463,27 +463,52 @@ class SearchEngine:
 
         return kept
 
+    @staticmethod
+    def _normalize_linkedin_url(url: str) -> str:
+        """正規化 LinkedIn URL 用於去重比對（去除 www、尾部斜線、大小寫統一）"""
+        if not url:
+            return ''
+        url = url.strip().lower()
+        # 統一移除 www
+        url = url.replace('://www.', '://')
+        # 統一去除尾部斜線
+        url = url.rstrip('/')
+        # 統一 http → https
+        if url.startswith('http://'):
+            url = 'https://' + url[7:]
+        return url
+
     def _merge_and_dedup(self, linkedin_data: list, github_data: list) -> List[Candidate]:
-        """合併 LinkedIn + GitHub 結果，去重"""
+        """
+        合併 LinkedIn + GitHub 結果，跨來源去重
+
+        去重策略：
+        1. LinkedIn URL 正規化比對（跨來源）
+        2. GitHub username 精確比對
+        3. GitHub 候選人若 LinkedIn URL 已被 LinkedIn 候選人佔有 → 合併資料（不新增）
+        """
         candidates = []
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         today = datetime.now().strftime('%Y-%m-%d')
 
-        # LinkedIn 候選人
+        # ── 跨來源 LinkedIn URL 索引 ──
+        # key: normalized linkedin_url → value: candidates list 中的 index
+        li_url_index: dict = {}
+
+        # ── Phase 1: LinkedIn 候選人 ──
         for item in linkedin_data:
             li_url = item.get('linkedin_url', '')
             if self.dedup.is_seen(linkedin_url=li_url):
                 continue
             self.dedup.mark_seen(linkedin_url=li_url)
 
-            # 基本驗證
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
                 continue
 
             source = 'li+ocr' if item.get('ocr_used') else 'linkedin'
 
-            candidates.append(Candidate(
+            candidate = Candidate(
                 id=str(uuid.uuid4()),
                 name=name,
                 source=source,
@@ -500,14 +525,20 @@ class SearchEngine:
                 search_date=today,
                 status='new',
                 created_at=now,
-            ))
+            )
+            candidates.append(candidate)
 
-        # GitHub 候選人
+            # 建立 LinkedIn URL 索引（用於跨來源比對）
+            norm_url = self._normalize_linkedin_url(li_url)
+            if norm_url:
+                li_url_index[norm_url] = len(candidates) - 1
+
+        # ── Phase 2: GitHub 候選人（跨來源去重） ──
+        merged_count = 0
         for item in github_data:
             gh_username = item.get('github_username', '')
             if self.dedup.is_seen(github_username=gh_username):
                 continue
-            self.dedup.mark_seen(github_username=gh_username)
 
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
@@ -523,13 +554,57 @@ class SearchEngine:
                 combined = list(set(skills + [t for t in tech_stack if isinstance(t, str)]))
                 skills = combined
 
-            candidates.append(Candidate(
+            # ── 跨來源去重：檢查此 GitHub 候選人的 LinkedIn URL 是否已被 LinkedIn 候選人佔有 ──
+            gh_li_url = item.get('linkedin_url', '')
+            norm_gh_li_url = self._normalize_linkedin_url(gh_li_url)
+
+            if norm_gh_li_url and norm_gh_li_url in li_url_index:
+                # 同一個人！LinkedIn 搜尋已找到 → 合併 GitHub 資料到既有 Candidate
+                idx = li_url_index[norm_gh_li_url]
+                existing = candidates[idx]
+                existing.github_url = item.get('github_url', '')
+                existing.github_username = gh_username
+                existing.email = existing.email or item.get('email', '')
+                existing.source = f"{existing.source}+github"
+                # 合併 skills（去重）
+                existing_skills = existing.skills if isinstance(existing.skills, list) else []
+                existing.skills = list(set(existing_skills + skills))
+                # 補充 GitHub 特有資料
+                existing.public_repos = item.get('public_repos', 0)
+                existing.followers = item.get('followers', 0)
+                existing.recent_push = item.get('recent_push', '')
+                existing.top_repos = item.get('top_repos', [])
+                existing.total_stars = item.get('total_stars', 0)
+                existing.score_factors = item.get('score_factors', {})
+                existing.tech_stack = item.get('tech_stack', [])
+                existing.top_repos_detail = item.get('top_repos_detail', [])
+                existing.languages = item.get('languages', {})
+
+                self.dedup.mark_seen(github_username=gh_username)
+                merged_count += 1
+                logger.info(
+                    f"跨來源合併: GitHub '{name}' → LinkedIn '{existing.name}' "
+                    f"(同一 LinkedIn: {gh_li_url})"
+                )
+                continue
+
+            # 檢查此 GitHub 候選人的 LinkedIn URL 是否已被其他 GitHub 候選人佔有
+            if norm_gh_li_url and norm_gh_li_url in li_url_index:
+                # 已在上方處理
+                continue
+
+            self.dedup.mark_seen(github_username=gh_username)
+            # 也標記 LinkedIn URL 防止後續 GitHub 候選人重複
+            if gh_li_url:
+                self.dedup.mark_seen(linkedin_url=gh_li_url)
+
+            candidate = Candidate(
                 id=str(uuid.uuid4()),
                 name=name,
                 source='github',
                 github_url=item.get('github_url', ''),
                 github_username=gh_username,
-                linkedin_url=item.get('linkedin_url', ''),
+                linkedin_url=gh_li_url,
                 linkedin_username=item.get('linkedin_username', ''),
                 email=item.get('email', ''),
                 location=item.get('location', ''),
@@ -553,6 +628,14 @@ class SearchEngine:
                 search_date=today,
                 status='new',
                 created_at=now,
-            ))
+            )
+            candidates.append(candidate)
+
+            # 加入 URL 索引（防止後續 GitHub 候選人與此人重複）
+            if norm_gh_li_url:
+                li_url_index[norm_gh_li_url] = len(candidates) - 1
+
+        if merged_count:
+            logger.info(f"跨來源去重完成: 合併 {merged_count} 位重複候選人 (LinkedIn+GitHub)")
 
         return candidates
