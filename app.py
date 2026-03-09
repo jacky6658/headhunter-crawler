@@ -3,6 +3,13 @@ HeadHunter Crawler — Flask 應用入口
 """
 import os
 import logging
+
+# 載入 .env 檔（API Keys 等敏感設定）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from logging.handlers import RotatingFileHandler
 
 import yaml
@@ -36,6 +43,17 @@ def load_config():
         tf = config['scheduler'].get('tasks_file')
         if tf:
             config['scheduler']['tasks_file'] = resolve(tf)
+
+    # ── 環境變數覆蓋 API Keys ──
+    api_keys = config.setdefault('api_keys', {})
+    if os.environ.get('BRAVE_API_KEY'):
+        api_keys['brave_api_key'] = os.environ['BRAVE_API_KEY']
+    if os.environ.get('PERPLEXITY_API_KEY'):
+        api_keys['perplexity_api_key'] = os.environ['PERPLEXITY_API_KEY']
+        # 同步到 enrichment.perplexity.api_key
+        config.setdefault('enrichment', {}).setdefault('perplexity', {})['api_key'] = os.environ['PERPLEXITY_API_KEY']
+    if os.environ.get('GITHUB_TOKENS'):
+        api_keys['github_tokens'] = [t.strip() for t in os.environ['GITHUB_TOKENS'].split(',') if t.strip()]
 
     return config
 
@@ -96,20 +114,14 @@ def create_app(test_config=None):
     task_manager = TaskManager(config)
     app.config['TASK_MANAGER'] = task_manager
 
-    # 初始化 Sheets Store (延遲初始化，設定不完整時跳過)
-    sheets_cfg = config.get('google_sheets', {})
-    if sheets_cfg.get('spreadsheet_id') and os.path.exists(sheets_cfg.get('credentials_file', '')):
-        try:
-            from storage.sheets_store import SheetsStore
-            store = SheetsStore(
-                spreadsheet_id=sheets_cfg['spreadsheet_id'],
-                credentials_file=sheets_cfg['credentials_file'],
-            )
-            app.config['SHEETS_STORE'] = store
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Google Sheets 初始化失敗: {e}")
-            app.config['SHEETS_STORE'] = None
-    else:
+    # 初始化本地儲存（取代 Google Sheets）
+    try:
+        from storage.local_store import LocalStore
+        data_dir = os.path.join(os.path.dirname(__file__), 'data')
+        store = LocalStore(data_dir=data_dir)
+        app.config['SHEETS_STORE'] = store  # 保持同名 key，路由層不需改動
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"本地儲存初始化失敗: {e}")
         app.config['SHEETS_STORE'] = None
 
     # 初始化 Step1ne Client (可選)

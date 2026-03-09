@@ -4,9 +4,15 @@
 import json
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Optional
+
+
+class TaskStoppedException(Exception):
+    """任務被使用者手動停止"""
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,7 @@ class TaskManager:
         self.config = config
         self.tasks: dict = {}  # task_id → SearchTask
         self._scheduler = None
+        self._stop_events: Dict[str, threading.Event] = {}  # task_id → stop signal
 
         sched_cfg = config.get('scheduler', {})
         self.tasks_file = sched_cfg.get('tasks_file', 'data/tasks.json')
@@ -140,16 +147,37 @@ class TaskManager:
             logger.warning(f"任務 {task_id} 已在執行中")
             return False
 
-        import threading
-        t = threading.Thread(target=self._execute_task, args=(task_id,), daemon=True)
+        stop_event = threading.Event()
+        self._stop_events[task_id] = stop_event
+
+        t = threading.Thread(target=self._execute_task, args=(task_id, stop_event), daemon=True)
         t.start()
         return True
 
-    def _execute_task(self, task_id: str):
+    def stop_task(self, task_id: str) -> bool:
+        """停止正在執行的任務"""
+        task = self.tasks.get(task_id)
+        if not task or task.status != 'running':
+            return False
+
+        stop_event = self._stop_events.get(task_id)
+        if not stop_event:
+            return False
+
+        logger.info(f"停止任務: {task_id}")
+        stop_event.set()
+        return True
+
+    def _execute_task(self, task_id: str, stop_event: threading.Event = None):
         """執行單個任務（在背景執行緒）"""
         task = self.tasks.get(task_id)
         if not task:
             return
+
+        # 確保有 stop_event（排程器呼叫時可能沒有）
+        if stop_event is None:
+            stop_event = threading.Event()
+            self._stop_events[task_id] = stop_event
 
         task.status = 'running'
         task.progress = 0
@@ -168,9 +196,13 @@ class TaskManager:
                 self._save_tasks()
                 job_context = self._pull_job_context(task)
 
-            engine = SearchEngine(self.config, task, job_context=job_context)
+            engine = SearchEngine(self.config, task, job_context=job_context,
+                                  stop_event=stop_event)
 
             def on_progress(current, total, found, source):
+                # 每次回報進度時檢查停止信號
+                if stop_event.is_set():
+                    raise TaskStoppedException("使用者手動停止")
                 task.progress = int(current / total * 100) if total else 0
                 task.progress_detail = f"{source}: {current}/{total} 頁, {found} 人"
                 task.linkedin_count = found if 'linkedin' in source else task.linkedin_count
@@ -184,11 +216,8 @@ class TaskManager:
 
             candidates = engine.execute()
 
-            # 寫入 Google Sheets
-            from flask import current_app
+            # 寫入本地儲存
             try:
-                # 嘗試透過 Flask app context 取得 SheetsStore
-                # 如果在非 Flask context，直接初始化
                 self._write_results(task, candidates)
             except Exception as e:
                 logger.error(f"寫入結果失敗: {e}")
@@ -206,36 +235,34 @@ class TaskManager:
             # ── Auto-push: 任務完成後自動推送到 Step1ne 系統 ──
             self._auto_push_if_enabled(task, candidates)
 
+        except TaskStoppedException:
+            task.status = 'stopped'
+            task.error_message = '使用者手動停止'
+            logger.info(f"任務 {task_id} 已停止")
+
         except Exception as e:
             task.status = 'failed'
             task.error_message = str(e)
             self._save_checkpoint(task_id, 'failed', {'error': str(e)})
             logger.error(f"任務 {task_id} 失敗: {e}")
 
+        finally:
+            # 清除停止信號
+            self._stop_events.pop(task_id, None)
+
         self._save_tasks()
 
     def _write_results(self, task: SearchTask, candidates: list):
-        """寫入結果到 Google Sheets"""
-        sheets_cfg = self.config.get('google_sheets', {})
-        if not sheets_cfg.get('spreadsheet_id'):
-            logger.warning("Google Sheets 未設定，跳過寫入")
-            return
-
+        """寫入結果到本地 JSON 儲存"""
         try:
-            from storage.sheets_store import SheetsStore
-            creds_file = sheets_cfg.get('credentials_file', 'credentials.json')
-            # 相對路徑轉為基於專案根目錄的絕對路徑
-            if not os.path.isabs(creds_file):
-                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                creds_file = os.path.join(base_dir, creds_file)
-            store = SheetsStore(
-                spreadsheet_id=sheets_cfg['spreadsheet_id'],
-                credentials_file=creds_file,
-            )
+            from storage.local_store import LocalStore
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            data_dir = os.path.join(base_dir, 'data')
+            store = LocalStore(data_dir=data_dir)
             result = store.write_candidates(task.client_name, candidates)
-            logger.info(f"Sheets 寫入: {result}")
+            logger.info(f"本地儲存寫入: {result}")
         except Exception as e:
-            logger.error(f"Sheets 寫入失敗: {e}")
+            logger.error(f"本地儲存寫入失敗: {e}")
 
     # ── Auto-push ─────────────────────────────────────────────
 

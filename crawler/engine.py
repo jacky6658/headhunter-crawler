@@ -10,6 +10,7 @@ Pipeline:
 import json as _json
 import logging
 import os
+import threading
 import uuid
 from datetime import datetime
 from typing import Callable, List, Optional
@@ -30,10 +31,12 @@ logger = logging.getLogger(__name__)
 class SearchEngine:
     """整合所有搜尋來源 + Enrichment + 規則式評分"""
 
-    def __init__(self, config: dict, task: SearchTask, job_context: dict = None):
+    def __init__(self, config: dict, task: SearchTask, job_context: dict = None,
+                 stop_event: threading.Event = None):
         self.config = config
         self.task = task
         self.job_context = job_context  # Step1ne 職缺畫像 (Phase 0 提供)
+        self.stop_event = stop_event
 
         self.ad = AntiDetect(config)
         self.ocr = CrawlerOCR(config)
@@ -41,8 +44,10 @@ class SearchEngine:
             config.get('dedup', {}).get('cache_file', 'data/dedup_cache.json')
         )
 
-        self.linkedin_searcher = LinkedInSearcher(config, self.ad, self.ocr)
-        self.github_searcher = GitHubSearcher(config, self.ad)
+        self.linkedin_searcher = LinkedInSearcher(config, self.ad, self.ocr,
+                                                   stop_event=stop_event)
+        self.github_searcher = GitHubSearcher(config, self.ad,
+                                               stop_event=stop_event)
 
         # 技能評分系統 (fallback)
         base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -69,6 +74,12 @@ class SearchEngine:
 
         self.on_progress: Optional[Callable] = None
 
+    def _check_stop(self):
+        """檢查是否需要停止任務"""
+        if self.stop_event and self.stop_event.is_set():
+            from scheduler.task_manager import TaskStoppedException
+            raise TaskStoppedException("使用者手動停止")
+
     def execute(self) -> List[Candidate]:
         """
         執行搜尋任務 (4 Phase Pipeline):
@@ -94,6 +105,7 @@ class SearchEngine:
             self.github_searcher.on_progress = self.on_progress
 
         # ═══ Phase 1: 搜尋 ═══
+        self._check_stop()
         logger.info("[Phase 1] LinkedIn + GitHub 搜尋...")
         linkedin_result = self.linkedin_searcher.search_with_fallback(
             skills=skills,
@@ -121,6 +133,7 @@ class SearchEngine:
                      f"去重後={len(candidates)}")
 
         # ═══ Phase 1.5: 相關性篩選 ═══
+        self._check_stop()
         if candidates:
             before_count = len(candidates)
             candidates = self._filter_by_relevance(candidates)
@@ -132,6 +145,7 @@ class SearchEngine:
                 logger.info(f"[Phase 1.5] 相關性篩選: 全部 {len(candidates)} 位通過")
 
         # ═══ Phase 2: Enrichment (ProfileEnricher) ═══
+        self._check_stop()
         if self.enricher and candidates:
             logger.info(f"[Phase 2] ProfileEnricher 深度分析 {len(candidates)} 位候選人...")
             candidates = self._enrich_candidates(candidates)
@@ -142,6 +156,7 @@ class SearchEngine:
                 logger.info("[Phase 2] 跳過 (無候選人)")
 
         # ═══ Phase 3: 規則式關鍵字評分 + match_tags ═══
+        self._check_stop()
         logger.info("[Phase 3] 規則式關鍵字評分 + match_tags 生成...")
         candidates = self._score_candidates(candidates)
         self._generate_match_tags(candidates)
@@ -514,6 +529,8 @@ class SearchEngine:
                 source='github',
                 github_url=item.get('github_url', ''),
                 github_username=gh_username,
+                linkedin_url=item.get('linkedin_url', ''),
+                linkedin_username=item.get('linkedin_username', ''),
                 email=item.get('email', ''),
                 location=item.get('location', ''),
                 bio=item.get('bio', ''),
@@ -521,6 +538,15 @@ class SearchEngine:
                 skills=skills,
                 public_repos=item.get('public_repos', 0),
                 followers=item.get('followers', 0),
+                recent_push=item.get('recent_push', ''),
+                top_repos=item.get('top_repos', []),
+                # GitHub 深度分析資料（傳給評分引擎）
+                total_stars=item.get('total_stars', 0),
+                score_factors=item.get('score_factors', {}),
+                tech_stack=item.get('tech_stack', []),
+                top_repos_detail=item.get('top_repos_detail', []),
+                languages=item.get('languages', {}),
+                # 搜尋追蹤
                 client_name=self.task.client_name,
                 job_title=self.task.job_title,
                 task_id=self.task.id,

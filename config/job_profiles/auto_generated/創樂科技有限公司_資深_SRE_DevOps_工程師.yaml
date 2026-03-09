@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: 資深 SRE / DevOps 工程師
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: kubernetes
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: devops
+    weight: 4
+  - skill: aws
+    weight: 3
+  - skill: gitops
+    weight: 2
+  - skill: terraform
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

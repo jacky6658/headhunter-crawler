@@ -27,6 +27,13 @@ class Candidate:
     recent_push: str = ""
     top_repos: List[str] = field(default_factory=list)
 
+    # GitHub 深度分析 (deep_analyze)
+    total_stars: int = 0
+    score_factors: dict = field(default_factory=dict)
+    tech_stack: List[str] = field(default_factory=list)
+    top_repos_detail: List[dict] = field(default_factory=list)
+    languages: dict = field(default_factory=dict)
+
     # 搜尋來源追蹤
     client_name: str = ""              # 客戶名稱
     job_title: str = ""                # 職缺名稱

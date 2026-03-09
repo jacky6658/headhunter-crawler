@@ -4,6 +4,7 @@ GitHub API 搜尋模組 — 支援多 token 輪換 + 全維度深度分析
 """
 import logging
 import random
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Callable, Optional
@@ -17,9 +18,10 @@ GITHUB_API = "https://api.github.com"
 class GitHubSearcher:
     """GitHub 人才搜尋，支援多 token 輪換"""
 
-    def __init__(self, config: dict, anti_detect):
+    def __init__(self, config: dict, anti_detect, stop_event=None):
         self.config = config
         self.ad = anti_detect
+        self.stop_event = stop_event
 
         crawler_cfg = config.get('crawler', {})
         gh_cfg = crawler_cfg.get('github', {})
@@ -34,7 +36,108 @@ class GitHubSearcher:
 
         self.on_progress: Optional[Callable] = None
 
+        # 啟動時驗證 tokens
+        self._validate_tokens()
+
+    def _is_stopped(self) -> bool:
+        """檢查是否被要求停止"""
+        return self.stop_event is not None and self.stop_event.is_set()
+
     # ── Token 管理 ───────────────────────────────────────────
+
+    LINKEDIN_URL_PATTERN = re.compile(
+        r'https?://(?:www\.)?linkedin\.com/in/([\w\-]+)/?'
+    )
+
+    def _validate_tokens(self):
+        """啟動時驗證所有 GitHub tokens，移除無效的"""
+        if not self.tokens:
+            logger.warning("GitHub: 未設定 token — 使用無 token 模式 (60 req/hr)")
+            return
+
+        valid = []
+        for token in self.tokens:
+            try:
+                headers = {'Accept': 'application/vnd.github.v3+json',
+                           'Authorization': f'token {token}'}
+                data, status = self.ad.http_get_json(
+                    f"{GITHUB_API}/rate_limit",
+                    extra_headers=headers, timeout=10,
+                )
+                if status == 200:
+                    remaining = data.get('rate', {}).get('remaining', 0)
+                    logger.info(f"GitHub token {token[:8]}... 有效 (remaining: {remaining})")
+                    valid.append(token)
+                else:
+                    logger.warning(f"GitHub token {token[:8]}... 無效 (HTTP {status})，已移除")
+            except Exception as e:
+                logger.warning(f"GitHub token {token[:8]}... 驗證失敗: {e}")
+
+        removed = len(self.tokens) - len(valid)
+        self.tokens = valid
+        self._current_token_idx = 0
+
+        if removed:
+            logger.info(f"GitHub token 驗證: {len(valid)} 有效, {removed} 已移除")
+        if not self.tokens:
+            logger.warning("GitHub: 無有效 token — 降級為無 token 模式 (60 req/hr)")
+
+    @staticmethod
+    def _clean_linkedin_url(url: str) -> str:
+        """正規化 LinkedIn URL"""
+        m = re.search(r'linkedin\.com/in/([\w\-]+)', url)
+        if m:
+            username = m.group(1)
+            return f'https://www.linkedin.com/in/{username}/'
+        return ''
+
+    def _find_linkedin_url(self, username: str, user: dict, gh_headers: dict) -> str:
+        """
+        嘗試從 GitHub 用戶資料中發現 LinkedIn URL
+        方法 1: GitHub social_accounts API
+        方法 2: bio 欄位 regex
+        方法 3: blog 欄位 regex
+        """
+        # 方法 1: GitHub social_accounts API（最可靠）
+        try:
+            self.ad.github_delay()
+            accounts, status = self.ad.http_get_json(
+                f"{GITHUB_API}/users/{username}/social_accounts",
+                extra_headers=gh_headers, timeout=10,
+            )
+            if status == 200 and isinstance(accounts, list):
+                for account in accounts:
+                    provider = (account.get('provider', '') or '').lower()
+                    url = account.get('url', '') or ''
+                    if provider == 'linkedin' or 'linkedin.com/in/' in url:
+                        clean = self._clean_linkedin_url(url)
+                        if clean:
+                            logger.info(f"LinkedIn URL (social_accounts): {username} -> {clean}")
+                            return clean
+        except Exception as e:
+            logger.debug(f"social_accounts API 失敗 ({username}): {e}")
+
+        # 方法 2: 從 bio 欄位提取
+        bio = user.get('bio', '') or ''
+        if bio:
+            m = self.LINKEDIN_URL_PATTERN.search(bio)
+            if m:
+                clean = self._clean_linkedin_url(m.group(0))
+                if clean:
+                    logger.info(f"LinkedIn URL (bio): {username} -> {clean}")
+                    return clean
+
+        # 方法 3: 從 blog 欄位提取
+        blog = user.get('blog', '') or ''
+        if blog:
+            # blog 可能直接是 LinkedIn URL
+            if 'linkedin.com/in/' in blog:
+                clean = self._clean_linkedin_url(blog)
+                if clean:
+                    logger.info(f"LinkedIn URL (blog): {username} -> {clean}")
+                    return clean
+
+        return ''
 
     @property
     def current_token(self) -> Optional[str]:
@@ -175,13 +278,21 @@ class GitHubSearcher:
             recent_push = repos[0].get('pushed_at', '') if repos else ''
             top_repos = [r.get('name', '') for r in repos[:5]]
 
+            # 嘗試發現 LinkedIn URL
+            linkedin_url = self._find_linkedin_url(username, user, gh_headers)
+            linkedin_username = ''
+            if linkedin_url:
+                m_li = re.search(r'linkedin\.com/in/([\w\-]+)', linkedin_url)
+                if m_li:
+                    linkedin_username = m_li.group(1)
+
             return {
                 'source': 'github',
                 'name': user.get('name') or username,
                 'github_url': user.get('html_url', f'https://github.com/{username}'),
                 'github_username': username,
-                'linkedin_url': '',
-                'linkedin_username': '',
+                'linkedin_url': linkedin_url,
+                'linkedin_username': linkedin_username,
                 'location': user.get('location', '') or '',
                 'bio': user.get('bio', '') or '',
                 'company': (user.get('company', '') or '').lstrip('@').strip(),
@@ -362,6 +473,14 @@ class GitHubSearcher:
 
             tech_stack = list(tech_stack_set)
 
+            # ── 發現 LinkedIn URL ──
+            linkedin_url = self._find_linkedin_url(username, user, gh_headers)
+            linkedin_username = ''
+            if linkedin_url:
+                m_li = re.search(r'linkedin\.com/in/([\w\-]+)', linkedin_url)
+                if m_li:
+                    linkedin_username = m_li.group(1)
+
             # ── 評分因子 ──
             has_quality = any(r.get('stargazers_count', 0) >= 10 for r in repos)
             score_factors = {
@@ -379,8 +498,8 @@ class GitHubSearcher:
                 'name': user.get('name') or username,
                 'github_url': user.get('html_url', f'https://github.com/{username}'),
                 'github_username': username,
-                'linkedin_url': '',
-                'linkedin_username': '',
+                'linkedin_url': linkedin_url,
+                'linkedin_username': linkedin_username,
                 'location': user.get('location', '') or '',
                 'bio': user.get('bio', '') or '',
                 'company': (user.get('company', '') or '').lstrip('@').strip(),
@@ -434,7 +553,12 @@ class GitHubSearcher:
         logger.info(f"GitHub queries: {queries}")
 
         for query in queries:
+            if self._is_stopped():
+                logger.info("GitHub 搜尋被停止")
+                break
             for page in range(1, pages + 1):
+                if self._is_stopped():
+                    break
                 items, rate_limited = self._search_page(query, page, gh_headers)
                 if rate_limited:
                     # 用新 token 重試

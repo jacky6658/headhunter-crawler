@@ -67,7 +67,7 @@ def health():
 def list_candidates():
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     client = request.args.get('client')
     job_title = request.args.get('job_title')
@@ -86,7 +86,7 @@ def list_candidates():
 def get_candidate(candidate_id):
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     # 搜尋所有客戶工作表
     for client in store.list_clients():
@@ -101,7 +101,7 @@ def get_candidate(candidate_id):
 def update_candidate(candidate_id):
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     data = request.get_json()
     status = data.get('status')
@@ -116,7 +116,7 @@ def update_candidate(candidate_id):
 def export_candidates():
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     data = request.get_json() or {}
     result = store.read_candidates(
@@ -206,6 +206,14 @@ def run_task(task_id):
     return jsonify({'error': 'Task not found or already running'}), 400
 
 
+@api_bp.route('/tasks/<task_id>/stop', methods=['POST'])
+def stop_task(task_id):
+    tm = _get_task_manager()
+    if tm.stop_task(task_id):
+        return jsonify({'success': True, 'message': '任務已停止'})
+    return jsonify({'error': 'Task not found or not running'}), 400
+
+
 @api_bp.route('/tasks/<task_id>/status')
 def task_status(task_id):
     tm = _get_task_manager()
@@ -239,7 +247,7 @@ def list_processed():
 def update_processed(record_id):
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
     data = request.get_json()
     store.update_processed_status(
         record_id, data.get('status', 'imported'),
@@ -359,7 +367,7 @@ def system_push():
 
 @api_bp.route('/internal/results', methods=['POST'])
 def internal_results():
-    """Worker 回報搜尋結果，Flask 統一寫入 Sheets"""
+    """Worker 回報搜尋結果，寫入本地儲存"""
     store = _get_sheets_store()
     data = request.get_json()
 
@@ -368,7 +376,7 @@ def internal_results():
     candidates_data = data.get('candidates', [])
 
     if not store:
-        logger.warning("Sheets 未設定，結果僅記錄日誌")
+        logger.warning("儲存未初始化，結果僅記錄日誌")
         return jsonify({'success': True, 'written': 0})
 
     # 轉為 Candidate 物件
@@ -562,7 +570,7 @@ def score_candidates():
     """對指定候選人重新評分"""
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     data = request.get_json()
     client_name = data.get('client_name')
@@ -621,7 +629,7 @@ def score_candidates():
             grade = score_result['grade']
             detail_json = engine.score_to_detail_json(score_result)
 
-            # 更新 Sheets
+            # 更新評分
             store.update_candidate_score(
                 client_name, c['id'], score, grade, detail_json
             )
@@ -675,7 +683,7 @@ def score_detail(candidate_id):
     """取得候選人的評分細項（展開顯示用）"""
     store = _get_sheets_store()
     if not store:
-        return jsonify({'error': 'Google Sheets 未設定'}), 503
+        return jsonify({'error': '資料儲存未初始化'}), 503
 
     from scoring.engine import ScoringEngine
 
@@ -822,7 +830,7 @@ def linkedin_ocr_analyze():
             new_grade = score_result['grade']
             detail_json = scoring['engine'].score_to_detail_json(score_result)
 
-            # 更新 Sheets
+            # 更新評分
             store.update_candidate_score(
                 client_name, candidate_id, new_score, new_grade, detail_json
             )
@@ -1001,7 +1009,7 @@ def enrich_batch():
     elif candidate_ids:
         store = _get_sheets_store()
         if not store:
-            return jsonify({'error': 'Google Sheets 未設定'}), 503
+            return jsonify({'error': '資料儲存未初始化'}), 503
         result = store.read_candidates(client_name=client_name, limit=500)
         all_candidates = result.get('data', [])
         id_set = set(candidate_ids)
@@ -1187,13 +1195,13 @@ def dashboard_stats():
         'recent_runs': [],
     }
 
-    # Sheets 統計
+    # 本地儲存統計
     if store:
         try:
-            sheet_stats = store.get_stats()
-            stats.update(sheet_stats)
+            local_stats = store.get_stats()
+            stats.update(local_stats)
         except Exception as e:
-            logger.error(f"Sheets 統計失敗: {e}")
+            logger.error(f"儲存統計失敗: {e}")
 
     # 任務統計
     if tm:

@@ -17,6 +17,7 @@
         <option value="running">執行中</option>
         <option value="completed">已完成</option>
         <option value="pending">等待中</option>
+        <option value="stopped">已停止</option>
         <option value="failed">失敗</option>
     </select>
 </div>
@@ -248,8 +249,11 @@ function loadTasks() {
                     <td class="px-4 py-3 text-xs">${formatSchedule(t)}</td>
                     <td class="px-4 py-3">${statusBadge(t.status, t.progress)}</td>
                     <td class="px-4 py-3 flex gap-1">
-                        <button onclick="event.stopPropagation();runTask('${t.id}')" class="p-1 hover:bg-blue-100 rounded" title="立即執行">&#9654;</button>
-                        <button onclick="event.stopPropagation();deleteTask('${t.id}')" class="p-1 hover:bg-red-100 rounded" title="刪除">&#128465;</button>
+                        ${t.status === 'running'
+                          ? `<button onclick="event.stopPropagation();stopTask('${t.id}')" class="p-1 hover:bg-orange-100 rounded text-orange-600 font-bold" title="暫停">&#9724;</button>`
+                          : `<button onclick="event.stopPropagation();runTask('${t.id}')" class="p-1 hover:bg-blue-100 rounded" title="立即執行">&#9654;</button>
+                             <button onclick="event.stopPropagation();deleteTask('${t.id}')" class="p-1 hover:bg-red-100 rounded" title="刪除">&#128465;</button>`
+                        }
                     </td>
                 </tr>
                 <tr id="detail-${t.id}" class="hidden">
@@ -290,6 +294,7 @@ function statusBadge(status, progress) {
         'failed': '<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">失敗</span>',
         'pending': '<span class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">等待</span>',
         'paused': '<span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">暫停</span>',
+        'stopped': '<span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700">已停止</span>',
     };
     return map[status] || status;
 }
@@ -300,6 +305,15 @@ function toggleDetail(id) {
 
 function runTask(id) {
     fetch(`/api/tasks/${id}/run`, {method:'POST'}).then(() => loadTasks());
+}
+
+function stopTask(id) {
+    fetch(`/api/tasks/${id}/stop`, {method:'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) notify('任務已停止', 'warning');
+            loadTasks();
+        });
 }
 
 function deleteTask(id) {

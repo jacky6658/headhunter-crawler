@@ -37,10 +37,11 @@ def _normalize_key(skill: str) -> str:
 class LinkedInSearcher:
     """LinkedIn 人才搜尋，4 層備援"""
 
-    def __init__(self, config: dict, anti_detect, ocr=None):
+    def __init__(self, config: dict, anti_detect, ocr=None, stop_event=None):
         self.config = config
         self.ad = anti_detect
         self.ocr = ocr
+        self.stop_event = stop_event
         self.skill_synonyms = _load_skill_synonyms()
 
         crawler_cfg = config.get('crawler', {})
@@ -54,6 +55,10 @@ class LinkedInSearcher:
         self.min_results = li_cfg.get('min_results_threshold', 3)
 
         self.on_progress: Optional[Callable] = None
+
+    def _is_stopped(self) -> bool:
+        """檢查是否被要求停止"""
+        return self.stop_event is not None and self.stop_event.is_set()
 
     # ── 技能同義詞 ───────────────────────────────────────────
 
@@ -122,6 +127,8 @@ class LinkedInSearcher:
         # 未知地區：用引號精確匹配
         return f'"{location}"'
 
+    BRAVE_QUERY_MAX_LEN = 380  # Brave API 查詢長度上限（留 margin）
+
     def build_brave_queries(self, primary_skills: list, secondary_skills: list,
                             location: str, job_title: str = '') -> list:
         """
@@ -130,47 +137,88 @@ class LinkedInSearcher:
         2. 主技能 OR + 地區變體 (技能匹配)
         3. 主技能 AND + 地區變體 (嚴格)
         4. 主技能 + 次技能 + 地區變體 (補充)
+
+        所有查詢都會控制在 BRAVE_QUERY_MAX_LEN 以內，避免 HTTP 422。
         """
+        MAX_LEN = self.BRAVE_QUERY_MAX_LEN
         queries = []
-        loc_part = self._location_query_part(location)
+        prefix = 'site:linkedin.com/in/ '
+        loc_full = self._location_query_part(location)
+        loc_short = f'"{location}"'
+
+        def pick_loc(budget: int) -> str:
+            """根據剩餘空間選擇完整或精簡的地區搜尋詞"""
+            return loc_full if len(loc_full) <= budget else loc_short
+
+        def try_add(q: str):
+            """只加入長度合法的查詢"""
+            if len(q) <= MAX_LEN:
+                queries.append(q)
+            else:
+                logger.debug(f"Brave query 超長 ({len(q)} chars)，跳過: {q[:80]}...")
 
         # 查詢 1: 職缺名稱 + 地區 — 最精準
         if job_title:
             import re as _re
-            # 取括號外的部分作為主標題
             en_title = _re.sub(r'[（(][^）)]*[）)]', '', job_title).strip()
             if en_title:
-                queries.append(f'site:linkedin.com/in/ "{en_title}" {loc_part}')
+                loc = pick_loc(MAX_LEN - len(prefix) - len(en_title) - 5)
+                try_add(f'{prefix}"{en_title}" {loc}')
 
-        # 查詢 2: 主技能 用 OR (寬鬆) — 限制同義詞數量避免查詢過長
+        # 查詢 2: 主技能 用 OR (寬鬆) — 逐項累加，超長即停止
         if primary_skills:
             all_terms = []
             for skill in primary_skills:
-                for s in self.expand_skill_synonyms(skill)[:3]:  # 每個技能最多 3 個同義詞
+                for s in self.expand_skill_synonyms(skill)[:2]:  # 每個技能最多 2 個同義詞
                     t = f'"{s}"'
                     if t not in all_terms:
                         all_terms.append(t)
-            all_terms = all_terms[:10]  # 總計最多 10 個 OR 項
-            skill_part = ' OR '.join(all_terms)
-            queries.append(f'site:linkedin.com/in/ ({skill_part}) {loc_part}')
+            all_terms = all_terms[:8]  # 總計最多 8 個 OR 項
+
+            # 逐項加入，檢查長度
+            used_terms = []
+            for term in all_terms:
+                test_skill = ' OR '.join(used_terms + [term])
+                loc = pick_loc(MAX_LEN - len(prefix) - len(test_skill) - 5)
+                test_q = f'{prefix}({test_skill}) {loc}'
+                if len(test_q) <= MAX_LEN:
+                    used_terms.append(term)
+                else:
+                    break
+            if used_terms:
+                skill_part = ' OR '.join(used_terms)
+                loc = pick_loc(MAX_LEN - len(prefix) - len(skill_part) - 5)
+                try_add(f'{prefix}({skill_part}) {loc}')
 
         # 查詢 3: 主技能 AND (精準)
         if len(primary_skills) >= 2:
             terms = [f'"{s}"' for s in primary_skills[:2]]
-            queries.append(f'site:linkedin.com/in/ {" ".join(terms)} {loc_part}')
+            terms_str = ' '.join(terms)
+            loc = pick_loc(MAX_LEN - len(prefix) - len(terms_str) - 2)
+            try_add(f'{prefix}{terms_str} {loc}')
 
-        # 查詢 4: 主技能 + 次技能混合
-        if secondary_skills:
+        # 查詢 4: 主技能 + 次技能混合 — 逐項累加
+        if secondary_skills and primary_skills:
+            p = f'"{primary_skills[0]}"'
             sec_terms = []
-            for skill in secondary_skills[:3]:  # 最多取 3 個次技能
-                for s in self.expand_skill_synonyms(skill)[:2]:  # 每個最多 2 個同義詞
-                    t = f'"{s}"'
-                    if t not in sec_terms:
-                        sec_terms.append(t)
-            if primary_skills:
-                p = f'"{primary_skills[0]}"'
-                s_part = ' OR '.join(sec_terms)
-                queries.append(f'site:linkedin.com/in/ {p} ({s_part}) {loc_part}')
+            for skill in secondary_skills[:3]:
+                t = f'"{skill}"'  # 次技能不展開同義詞，節省空間
+                if t not in sec_terms:
+                    sec_terms.append(t)
+
+            used_sec = []
+            for term in sec_terms:
+                test_s = ' OR '.join(used_sec + [term])
+                loc = pick_loc(MAX_LEN - len(prefix) - len(p) - len(test_s) - 8)
+                test_q = f'{prefix}{p} ({test_s}) {loc}'
+                if len(test_q) <= MAX_LEN:
+                    used_sec.append(term)
+                else:
+                    break
+            if used_sec:
+                s_part = ' OR '.join(used_sec)
+                loc = pick_loc(MAX_LEN - len(prefix) - len(p) - len(s_part) - 8)
+                try_add(f'{prefix}{p} ({s_part}) {loc}')
 
         # 去重
         seen = set()
@@ -180,7 +228,7 @@ class LinkedInSearcher:
                 seen.add(q)
                 unique.append(q)
 
-        return unique or [f'site:linkedin.com/in/ {loc_part}']
+        return unique or [f'{prefix}{loc_short}']
 
     # ── URL 工具 ─────────────────────────────────────────────
 
@@ -314,6 +362,9 @@ class LinkedInSearcher:
 
             try:
                 for pg in range(pages):
+                    if self._is_stopped():
+                        logger.info("Playwright 搜尋被停止")
+                        break
                     start = pg * 10
                     url = (
                         f"https://www.google.com/search"
@@ -379,6 +430,9 @@ class LinkedInSearcher:
         logger.info(f"Google urllib query: {query}")
 
         for pg in range(pages):
+            if self._is_stopped():
+                logger.info("Google urllib 搜尋被停止")
+                break
             start = pg * 10
             search_url = f"https://www.google.com/search?q={quote(query)}&start={start}&num=10&hl=zh-TW"
             self.ad.request_delay()
@@ -433,6 +487,9 @@ class LinkedInSearcher:
         logger.info(f"Bing query: {query}")
 
         for pg in range(pages):
+            if self._is_stopped():
+                logger.info("Bing 搜尋被停止")
+                break
             first = pg * 10 + 1
             search_url = f"https://www.bing.com/search?q={quote(query)}&first={first}&count=10"
             self.ad.request_delay()
@@ -480,16 +537,22 @@ class LinkedInSearcher:
         logger.info(f"Brave: {len(queries)} 組查詢")
 
         total_pages_done = 0
-        pages_per_query = max(2, pages)  # 每組至少查 2 頁
+        # Brave API offset 有限制（免費/基本方案 offset 上限很低）
+        # 改用多組 query × 1 頁策略，而非單 query × 多頁
+        brave_count = 20  # 每頁最多 20 筆
+        pages_per_query = 1  # 只取第 1 頁，靠多組 query 覆蓋
 
         for qi, query in enumerate(queries):
-            # Brave API 查詢長度限制 ~400 字元，超過會 422
+            # 安全檢查：build_brave_queries 已控管長度，此處僅為防禦性跳過
             if len(query) > 400:
-                logger.info(f"Brave [{qi+1}/{len(queries)}]: 查詢過長 ({len(query)} chars)，截斷")
-                query = query[:400].rsplit(' OR ', 1)[0] + ')'
+                logger.warning(f"Brave [{qi+1}/{len(queries)}]: 查詢過長 ({len(query)} chars)，跳過")
+                continue
             logger.info(f"Brave [{qi+1}/{len(queries)}]: {query}")
             for pg in range(pages_per_query):
-                params = urlencode({'q': query, 'count': 20, 'offset': pg * 20})
+                if self._is_stopped():
+                    logger.info("Brave 搜尋被停止")
+                    break
+                params = urlencode({'q': query, 'count': brave_count, 'offset': pg * brave_count})
                 data, status = self.ad.http_get_json(
                     f"{endpoint}?{params}", extra_headers=brave_headers)
 
@@ -498,6 +561,9 @@ class LinkedInSearcher:
                     return {'success': False, 'data': results}
                 if status == 429:
                     logger.warning("Brave API: 速率限制 (429)")
+                    break
+                if status == 422:
+                    logger.warning(f"Brave API: HTTP 422 (offset={pg * brave_count})，跳過後續頁")
                     break
                 if status != 200:
                     logger.warning(f"Brave API: HTTP {status}")

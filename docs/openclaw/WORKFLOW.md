@@ -120,8 +120,8 @@ Body: { candidates: [...] }
 - `ai_grade`（text）：A/B/C/D
 - `ai_report`（text）：AI 分析報告
 - `status`（text）：
-  - A/B 級 → 'AI推薦'
-  - C/D 級 → 保持 '爬蟲初篩' 或更新為其他狀態
+  - A/B 級 → `'AI推薦'`（顧問應聯繫的人選）
+  - C/D 級 → `'備選人才'`（不符合當前職缺，但保留在人才池，可能適合其他職缺）
 
 ### Step 5: 不符合候選人處理
 

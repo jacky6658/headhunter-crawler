@@ -16,6 +16,7 @@ apscheduler>=3.10
 
 # 設定檔
 pyyaml>=6.0
+python-dotenv>=1.0
 
 # OCR
 pytesseract>=0.3.10

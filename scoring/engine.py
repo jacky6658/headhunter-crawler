@@ -25,9 +25,10 @@ GRADE_THRESHOLDS = {
 
 # must_have 缺失懲罰因子
 MUST_HAVE_PENALTY = 0.7  # 每缺 1 個 must_have → 總分 × 0.7
+GITHUB_MUST_HAVE_PENALTY = 0.8  # GitHub-only 候選人使用較寬鬆的懲罰
 
 # GitHub 活躍度加分上限
-GITHUB_BONUS_MAX = 10
+GITHUB_BONUS_MAX = 20
 
 
 class ScoringEngine:
@@ -109,7 +110,15 @@ class ScoringEngine:
 
         # 5. must_have 缺失懲罰
         missing_must_have = must_have_result.get('missing', [])
-        penalty = MUST_HAVE_PENALTY ** len(missing_must_have)
+
+        # GitHub-only 候選人（無 LinkedIn、無 work_history）使用較寬鬆的懲罰
+        is_github_only = (
+            candidate.get('source') == 'github'
+            and not candidate.get('linkedin_url')
+            and not candidate.get('work_history')
+        )
+        penalty_factor = GITHUB_MUST_HAVE_PENALTY if is_github_only else MUST_HAVE_PENALTY
+        penalty = penalty_factor ** len(missing_must_have)
         penalized_score = raw_score * penalty
 
         # 6. GitHub 活躍度加分
@@ -219,6 +228,27 @@ class ScoringEngine:
         tech_stack = candidate.get('tech_stack', [])
         if isinstance(tech_stack, list):
             raw_skills.extend(tech_stack)
+
+        # 5b. top_repos_detail — 從 repo topics、description、language 提取
+        top_repos_detail = candidate.get('top_repos_detail', [])
+        if isinstance(top_repos_detail, list):
+            for repo in top_repos_detail:
+                if isinstance(repo, dict):
+                    topics = repo.get('topics', [])
+                    if isinstance(topics, list):
+                        raw_skills.extend(topics)
+                    desc = repo.get('description', '')
+                    if desc:
+                        extracted = self.normalizer.extract_skills_from_text(desc)
+                        raw_skills.extend(extracted)
+                    lang = repo.get('language', '')
+                    if lang:
+                        raw_skills.append(lang)
+
+        # 5c. languages distribution — 提取所有程式語言
+        languages = candidate.get('languages', {})
+        if isinstance(languages, dict):
+            raw_skills.extend(languages.keys())
 
         # 6. work_history 提取（Phase 2 enrichment 結果）
         work_history = candidate.get('work_history', [])
@@ -390,22 +420,30 @@ class ScoringEngine:
 
     def _calc_github_bonus(self, candidate: dict) -> int:
         """
-        GitHub 活躍度加分（最多 +10）
+        GitHub 活躍度加分（最多 +20）
 
-        - public_repos >= 20: +3
-        - followers >= 50: +3
+        - public_repos >= 20: +3, >= 50: +5
+        - followers >= 50: +3, >= 200: +5
         - recent_push within 90 days: +2
         - has quality repos (star > 10): +2
+        - total_stars >= 50: +2, >= 200: +4
+        - active contributor (push_count_90d > 5): +2
         """
         bonus = 0
 
         repos = candidate.get('public_repos', 0)
-        if isinstance(repos, (int, float)) and repos >= 20:
-            bonus += 3
+        if isinstance(repos, (int, float)):
+            if repos >= 50:
+                bonus += 5
+            elif repos >= 20:
+                bonus += 3
 
         followers = candidate.get('followers', 0)
-        if isinstance(followers, (int, float)) and followers >= 50:
-            bonus += 3
+        if isinstance(followers, (int, float)):
+            if followers >= 200:
+                bonus += 5
+            elif followers >= 50:
+                bonus += 3
 
         # 近期活動
         recent = candidate.get('recent_push', '')
@@ -420,14 +458,22 @@ class ScoringEngine:
 
         # 品質 repo（從 score_factors 取得）
         score_factors = candidate.get('score_factors', {})
-        if score_factors.get('has_quality_repos'):
-            bonus += 2
+        if isinstance(score_factors, dict):
+            if score_factors.get('has_quality_repos'):
+                bonus += 2
+
+            # active contributor（90 天內 push > 5 次）
+            if score_factors.get('is_active_contributor'):
+                bonus += 2
 
         # 總 stars
-        total_stars = score_factors.get('total_stars', 0) or \
-                      candidate.get('total_stars', 0)
-        if isinstance(total_stars, (int, float)) and total_stars >= 50:
-            bonus += 2
+        total_stars = (score_factors.get('total_stars', 0) if isinstance(score_factors, dict) else 0) \
+                      or candidate.get('total_stars', 0)
+        if isinstance(total_stars, (int, float)):
+            if total_stars >= 200:
+                bonus += 4
+            elif total_stars >= 50:
+                bonus += 2
 
         return min(bonus, GITHUB_BONUS_MAX)
 
