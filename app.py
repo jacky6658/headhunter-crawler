@@ -5,11 +5,22 @@ import os
 import logging
 
 # 載入 .env 檔（API Keys 等敏感設定）
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+def _load_dotenv():
+    """簡易 .env 載入器（不依賴 python-dotenv）"""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, value = line.partition('=')
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and value:
+                    os.environ.setdefault(key, value)
+
+_load_dotenv()
 from logging.handlers import RotatingFileHandler
 
 import yaml
@@ -109,12 +120,8 @@ def create_app(test_config=None):
     for d in ['data', 'logs']:
         os.makedirs(os.path.join(os.path.dirname(__file__), d), exist_ok=True)
 
-    # 初始化 Task Manager
-    from scheduler.task_manager import TaskManager
-    task_manager = TaskManager(config)
-    app.config['TASK_MANAGER'] = task_manager
-
     # 初始化本地儲存（取代 Google Sheets）
+    store = None
     try:
         from storage.local_store import LocalStore
         data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -123,6 +130,11 @@ def create_app(test_config=None):
     except Exception as e:
         logging.getLogger(__name__).warning(f"本地儲存初始化失敗: {e}")
         app.config['SHEETS_STORE'] = None
+
+    # 初始化 Task Manager（傳入共用 store 避免記憶體不同步）
+    from scheduler.task_manager import TaskManager
+    task_manager = TaskManager(config, store=store)
+    app.config['TASK_MANAGER'] = task_manager
 
     # 初始化 Step1ne Client (可選)
     step1ne_cfg = config.get('step1ne', {})

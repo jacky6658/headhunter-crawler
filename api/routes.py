@@ -323,6 +323,10 @@ def system_push():
                 if job_id:
                     c['step1ne_job_id'] = job_id
 
+    # 推送前將 status 設為 Step1ne 的初篩狀態（爬蟲內部 status 如 'new'/'imported' 不應洩漏）
+    for c in candidates:
+        c['status'] = '爬蟲初篩'
+
     # 使用新版匯入端點（v2），由 Step1ne 端做欄位映射
     result = client.push_candidates_v2(candidates, actor='Crawler-WebUI')
 

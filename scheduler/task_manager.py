@@ -31,8 +31,9 @@ from storage.models import SearchTask
 class TaskManager:
     """排程任務管理"""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, store=None):
         self.config = config
+        self.store = store  # 共用 LocalStore 實例（避免記憶體不同步）
         self.tasks: dict = {}  # task_id → SearchTask
         self._scheduler = None
         self._stop_events: Dict[str, threading.Event] = {}  # task_id → stop signal
@@ -253,12 +254,16 @@ class TaskManager:
         self._save_tasks()
 
     def _write_results(self, task: SearchTask, candidates: list):
-        """寫入結果到本地 JSON 儲存"""
+        """寫入結果到本地 JSON 儲存（使用共用 store 實例）"""
         try:
-            from storage.local_store import LocalStore
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            data_dir = os.path.join(base_dir, 'data')
-            store = LocalStore(data_dir=data_dir)
+            store = self.store
+            if not store:
+                # fallback: 建立新實例（不建議，會導致記憶體不同步）
+                from storage.local_store import LocalStore
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                data_dir = os.path.join(base_dir, 'data')
+                store = LocalStore(data_dir=data_dir)
+                logger.warning("TaskManager 使用 fallback LocalStore（記憶體可能不同步）")
             result = store.write_candidates(task.client_name, candidates)
             logger.info(f"本地儲存寫入: {result}")
         except Exception as e:

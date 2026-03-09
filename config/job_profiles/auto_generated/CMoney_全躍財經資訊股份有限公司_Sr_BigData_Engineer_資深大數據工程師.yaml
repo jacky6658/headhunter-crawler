@@ -2,24 +2,24 @@ job_profile:
   role_family: engineering
   role_name: Sr. BigData Engineer (資深大數據工程師)
   must_have:
-  - skill: bigdata engineer
-    weight: 8
   - skill: scala
+    weight: 8
+  - skill: kafka
     weight: 7
   core:
-  - skill: kafka
-    weight: 6
+  - skill: bigdata engineer
+    weight: 5
   - skill: spark
     weight: 5
+  nice_to_have:
   - skill: 大數據工程師
     weight: 4
   - skill: 數據中台
-    weight: 4
-  nice_to_have:
-  - skill: hadoop
-    weight: 4
-  - skill: mapreduce
     weight: 3
+  - skill: hadoop
+    weight: 2
+  - skill: mapreduce
+    weight: 2
   - skill: beam
     weight: 2
   - skill: heron

@@ -99,6 +99,19 @@ class JobProfileManager:
         except Exception as e:
             logger.error(f"儲存 profile 失敗: {e}")
 
+    # 職稱關鍵字（這些出現在 skill 中代表是職稱而非技術技能）
+    TITLE_KEYWORDS = {
+        'engineer', 'developer', 'architect', 'manager', 'lead',
+        'director', 'designer', 'analyst', 'consultant', 'specialist',
+        'officer', 'admin', 'coordinator', 'supervisor', 'intern',
+        '工程師', '開發者', '架構師', '經理', '主管', '總監',
+    }
+
+    def _is_job_title(self, skill: str) -> bool:
+        """判斷一個 skill 是否其實是職稱（不是技術技能）"""
+        words = skill.lower().split()
+        return any(w in self.TITLE_KEYWORDS for w in words)
+
     def generate_from_skills(self, primary_skills: list,
                              secondary_skills: list,
                              job_title: str = '',
@@ -109,16 +122,28 @@ class JobProfileManager:
         primary_skills → must_have (weight=7-8) + core (weight=5-6)
         secondary_skills → nice_to_have (weight=3)
         location → constraints.location
+
+        注意: 職稱類的 skill（如 "BigData Engineer"）會被降級到 core，
+        避免過度懲罰候選人。
         """
         must_have = []
         core = []
         nice_to_have = []
 
-        # primary → must_have (前 2 個) + core (其餘)
+        # primary → must_have (前 2 個技術技能) + core (其餘)
+        # 職稱類的 skill 降級到 core（weight 稍低）
+        must_have_count = 0
         for i, skill in enumerate(primary_skills):
             skill_lower = skill.lower().strip()
-            if i < 2:
-                must_have.append({'skill': skill_lower, 'weight': 8 - i})
+
+            # 職稱類 skill → 降級到 core
+            if self._is_job_title(skill_lower):
+                core.append({'skill': skill_lower, 'weight': 5})
+                continue
+
+            if must_have_count < 2:
+                must_have.append({'skill': skill_lower, 'weight': 8 - must_have_count})
+                must_have_count += 1
             else:
                 core.append({'skill': skill_lower, 'weight': 6 - min(i - 2, 2)})
 

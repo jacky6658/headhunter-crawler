@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 # 等級閾值
 GRADE_THRESHOLDS = {
-    'A': 80,  # 強推薦
-    'B': 60,  # 推薦
-    'C': 40,  # 待評估
-    # D: < 40  不推薦
+    'A': 75,  # 強推薦
+    'B': 55,  # 推薦
+    'C': 35,  # 待評估（資料不足時，搜尋來源提供基線信心）
+    # D: < 35  不推薦 / 資料嚴重不足
 }
 
 # must_have 缺失懲罰因子
@@ -111,23 +111,42 @@ class ScoringEngine:
         # 5. must_have 缺失懲罰
         missing_must_have = must_have_result.get('missing', [])
 
-        # GitHub-only 候選人（無 LinkedIn、無 work_history）使用較寬鬆的懲罰
+        # 判斷候選人資料稀疏度
         is_github_only = (
             candidate.get('source') == 'github'
             and not candidate.get('linkedin_url')
             and not candidate.get('work_history')
         )
-        penalty_factor = GITHUB_MUST_HAVE_PENALTY if is_github_only else MUST_HAVE_PENALTY
+        has_sparse_data = (
+            len(candidate_skills) <= 2
+            and not candidate.get('work_history')
+        )
+
+        # 資料稀疏的候選人使用較寬鬆的懲罰
+        if has_sparse_data:
+            penalty_factor = 0.9  # 資料不足時不應過度懲罰
+        elif is_github_only:
+            penalty_factor = GITHUB_MUST_HAVE_PENALTY  # 0.8
+        else:
+            penalty_factor = MUST_HAVE_PENALTY  # 0.7
         penalty = penalty_factor ** len(missing_must_have)
         penalized_score = raw_score * penalty
 
-        # 6. GitHub 活躍度加分
+        # 6. 搜尋相關性基線分
+        # 候選人是通過搜尋引擎找到的，有基本相關性保底
+        search_relevance_bonus = self._calc_search_relevance(
+            candidate, profile
+        )
+        # 搜尋相關性作為「下限」— 即使技能完全沒匹配，也不低於此分數
+        penalized_score = max(penalized_score, search_relevance_bonus)
+
+        # 7. GitHub 活躍度加分
         github_bonus = 0
         if candidate.get('source') == 'github' or candidate.get('github_username'):
             github_bonus = self._calc_github_bonus(candidate)
             penalized_score = min(100, penalized_score + github_bonus)
 
-        # 7. 四捨五入
+        # 8. 四捨五入
         total_score = round(penalized_score)
         total_score = max(0, min(100, total_score))
 
@@ -160,6 +179,7 @@ class ScoringEngine:
                 'nice_to_have': nice_to_have_result,
                 'context': context_result,
                 'github_bonus': github_bonus,
+                'search_relevance': search_relevance_bonus,
             },
             'constraints_pass': constraints_result['pass'],
             'constraint_flags': constraints_result['flags'],
@@ -252,6 +272,13 @@ class ScoringEngine:
 
         # 6. work_history 提取（Phase 2 enrichment 結果）
         work_history = candidate.get('work_history', [])
+        # work_history 可能是 JSON 字串（從 LocalStore 讀取時）
+        if isinstance(work_history, str) and work_history:
+            try:
+                import json as _json
+                work_history = _json.loads(work_history)
+            except (ValueError, TypeError):
+                work_history = []
         if isinstance(work_history, list):
             # 只取最近 3 段工作避免噪音
             for wh in work_history[:3]:
@@ -417,6 +444,71 @@ class ScoringEngine:
             'pass': len(flags) == 0,
             'flags': flags,
         }
+
+    def _calc_search_relevance(self, candidate: dict, profile: dict) -> float:
+        """
+        搜尋相關性基線分
+
+        當候選人資料稀疏（skills 為空、work_history 為空）但是通過
+        搜尋引擎找到時，根據搜尋來源和基本資訊給予基線分數。
+
+        邏輯：
+        - 候選人的 title/bio/company 與 job_profile 的 role_name
+          有文字重疊 → 給予基線分 15-35
+        - 此分數代表 "雖然資料不足無法完整評分，但搜尋來源暗示有相關性"
+        """
+        role_name = profile.get('role_name', '').lower()
+        if not role_name:
+            return 0
+
+        # 建立搜尋文本
+        searchable = ' '.join([
+            candidate.get('title', ''),
+            candidate.get('bio', ''),
+            candidate.get('company', ''),
+        ]).lower()
+
+        if not searchable.strip():
+            return 15  # 完全無資料，給最低基線
+
+        # 從 role_name 提取關鍵詞
+        role_keywords = set(role_name.replace('-', ' ').split())
+        # 排除常見停用詞
+        stopwords = {'sr', 'sr.', 'senior', 'junior', 'mid', 'lead', 'staff',
+                     'principal', 'chief', 'head', 'the', 'a', 'an', 'and',
+                     'or', 'of', 'in', 'at', 'for', 'to', '(', ')', '（', '）'}
+        role_keywords -= stopwords
+
+        if not role_keywords:
+            return 10
+
+        # 計算 title/bio 與 role_name 的關鍵詞重疊
+        matched_keywords = sum(1 for kw in role_keywords if kw in searchable)
+        match_ratio = matched_keywords / len(role_keywords) if role_keywords else 0
+
+        # 根據匹配度給分
+        if match_ratio >= 0.5:
+            return 45  # 標題高度相關（搜尋引擎找到 + 職稱匹配 → 至少 C 級）
+        elif match_ratio > 0:
+            return 35  # 部分相關
+        else:
+            # 檢查 profile 的技能是否出現在 title/bio 中
+            all_skills = (
+                [s['skill'] for s in profile.get('must_have', [])]
+                + [s['skill'] for s in profile.get('core', [])]
+            )
+            # 也用 normalizer 提取
+            searchable_skills = self.normalizer.extract_skills_from_text(searchable)
+            profile_skill_set = set()
+            for sk in all_skills:
+                normalized = self.normalizer.normalize(sk)
+                profile_skill_set.add(normalized)
+
+            skill_overlap = bool(set(searchable_skills) & profile_skill_set)
+            if skill_overlap:
+                return 35  # 從 title/bio 提取到相關技能
+            # 即使完全無法判斷，搜尋引擎找到代表有一定相關性
+            return 25  # 搜尋引擎排名靠前 → 基線分
 
     def _calc_github_bonus(self, candidate: dict) -> int:
         """

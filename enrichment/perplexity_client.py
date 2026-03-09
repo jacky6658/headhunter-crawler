@@ -66,7 +66,14 @@ class PerplexityClient:
         active_model = model_override or self.model
 
         # v4: 支援自訂 system prompt（P3: 拆分 job context 到 system）
-        sys_content = system_prompt or '你是專業獵頭顧問 AI。請根據指令分析候選人資訊，以嚴格 JSON 格式回傳。不要包含任何 markdown 標記或額外文字。'
+        sys_content = system_prompt or (
+            '你是專業獵頭顧問 AI。請根據指令分析候選人資訊。'
+            '你必須搜尋相關資訊並以嚴格 JSON 格式回傳。'
+            '不要回覆 "我無法存取" 或 "I cannot access" 之類的訊息。'
+            '如果無法直接訪問 URL，請搜尋候選人姓名和公司名稱來獲取資訊。'
+            '即使資訊不足，也必須回傳 JSON 結構（空值欄位填空字串或空陣列）。'
+            '不要包含任何 markdown 標記或額外文字。'
+        )
 
         headers = {
             'Authorization': f'Bearer {self.api_key}',

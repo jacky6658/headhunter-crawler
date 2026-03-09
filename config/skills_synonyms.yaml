@@ -136,6 +136,106 @@ php:
   - Laravel
   - Symfony
 
+# ── 大數據 / Data Engineering ──────────────────────────────────
+bigdata:
+  - Big Data
+  - BigData
+  - 大數據
+  - BigData Engineer
+  - Big Data Engineer
+  - 大數據工程師
+
+data-engineering:
+  - Data Engineering
+  - Data Engineer
+  - 資料工程
+  - 資料工程師
+  - 數據工程
+  - 數據工程師
+
+spark:
+  - Spark
+  - Apache Spark
+  - PySpark
+  - Spark SQL
+  - Spark Streaming
+  - SparkML
+
+hadoop:
+  - Hadoop
+  - Apache Hadoop
+  - HDFS
+  - Hadoop Distributed File System
+
+mapreduce:
+  - MapReduce
+  - Map-Reduce
+
+hive:
+  - Hive
+  - Apache Hive
+  - HiveQL
+
+flink:
+  - Flink
+  - Apache Flink
+
+beam:
+  - Beam
+  - Apache Beam
+
+airflow:
+  - Airflow
+  - Apache Airflow
+
+data-warehouse:
+  - Data Warehouse
+  - 資料倉儲
+  - 數據倉儲
+  - DW
+  - Data Warehousing
+  - Snowflake
+  - Redshift
+
+streaming:
+  - Stream Processing
+  - 流處理
+  - Streaming
+  - Real-time Processing
+  - Event Streaming
+  - Heron
+  - Storm
+
+distributed-systems:
+  - Distributed Systems
+  - 分散式系統
+  - Distributed Computing
+  - 分散式運算
+
+etl:
+  - ETL
+  - ELT
+  - Data Pipeline
+  - 資料管線
+  - 數據管線
+
+fintech:
+  - FinTech
+  - Financial Technology
+  - 金融科技
+
+data-science:
+  - Data Science
+  - Data Scientist
+  - 資料科學
+  - 數據分析
+
+数据中台:
+  - 數據中台
+  - Data Platform
+  - Data Infrastructure
+  - 資料中台
+
 # ── 資料 / ML / AI ───────────────────────────────────────────
 machinelearning:
   - Machine Learning
