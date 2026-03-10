@@ -1,0 +1,36 @@
+job_profile:
+  role_family: engineering
+  role_name: 建築專案經理
+  must_have:
+  - skill: 建築專案管理
+    weight: 8
+  - skill: 日文
+    weight: 7
+  core:
+  - skill: project manager
+    weight: 5
+  - skill: 建築
+    weight: 5
+  nice_to_have:
+  - skill: 施工管理
+    weight: 4
+  - skill: 建築設計
+    weight: 3
+  - skill: 口譯
+    weight: 2
+  - skill: 翻譯
+    weight: 2
+  - skill: 土木工程
+    weight: 2
+  - skill: construction
+    weight: 2
+  - skill: civil engineering
+    weight: 2
+  - skill: 跨國協調
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

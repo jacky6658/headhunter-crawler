@@ -64,7 +64,7 @@ class TaskManager:
         scheduled_count = 0
         missed_tasks = []
         for task_id, task in self.tasks.items():
-            if task.status in ('pending', 'paused') and task.schedule_type != 'once':
+            if task.schedule_type != 'once' and task.status in ('pending', 'paused', 'completed', 'stopped', 'failed'):
                 self._schedule_task(task)
                 scheduled_count += 1
 

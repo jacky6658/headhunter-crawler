@@ -1,0 +1,23 @@
+job_profile:
+  role_family: engineering
+  role_name: 風控人員
+  must_have:
+  - skill: 風險管理
+    weight: 8
+  - skill: 風控
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: 數據分析
+    weight: 4
+  - skill: 交易監控
+    weight: 3
+  - skill: excel
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北
