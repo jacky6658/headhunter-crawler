@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 後端開發工程師
+  must_have:
+  - skill: 後端工程師
+    weight: 8
+  - skill: .net core
+    weight: 7
+  core:
+  - skill: .net framework
+    weight: 6
+  - skill: c#
+    weight: 5
+  - skill: mssql
+    weight: 4
+  nice_to_have:
+  - skill: t-sql
+    weight: 4
+  - skill: webservice
+    weight: 3
+  - skill: asp.net
+    weight: 2
+  - skill: restful
+    weight: 2
+  - skill: 資料庫
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

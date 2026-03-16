@@ -140,7 +140,10 @@ def create_app(test_config=None):
     step1ne_cfg = config.get('step1ne', {})
     if step1ne_cfg.get('api_base_url'):
         from integration.step1ne_client import Step1neClient
-        app.config['STEP1NE_CLIENT'] = Step1neClient(step1ne_cfg['api_base_url'])
+        app.config['STEP1NE_CLIENT'] = Step1neClient(
+            api_base_url=step1ne_cfg['api_base_url'],
+            api_key=step1ne_cfg.get('api_key', '')
+        )
     else:
         app.config['STEP1NE_CLIENT'] = None
 

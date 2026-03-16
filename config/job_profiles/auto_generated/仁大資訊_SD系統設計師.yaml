@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: SD系統設計師
+  must_have:
+  - skill: sd
+    weight: 8
+  - skill: 系統設計師
+    weight: 7
+  core:
+  - skill: 系統架構
+    weight: 6
+  - skill: software designer
+    weight: 5
+  - skill: api設計
+    weight: 4
+  nice_to_have:
+  - skill: sql
+    weight: 4
+  - skill: 微服務
+    weight: 3
+  - skill: redis
+    weight: 2
+  - skill: docker
+    weight: 2
+  - skill: 分層架構
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

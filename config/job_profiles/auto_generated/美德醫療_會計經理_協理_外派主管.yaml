@@ -1,0 +1,39 @@
+job_profile:
+  role_family: engineering
+  role_name: 會計經理/協理(外派主管)
+  must_have:
+  - skill: 會計經理
+    weight: 8
+  - skill: 財務主管
+    weight: 7
+  core:
+  - skill: 財務協理
+    weight: 6
+  - skill: ifrs
+    weight: 5
+  - skill: 上市櫃財會
+    weight: 4
+  nice_to_have:
+  - skill: 成本核算
+    weight: 4
+  - skill: 鼎新t100
+    weight: 3
+  - skill: tiptop
+    weight: 2
+  - skill: 內控稽核
+    weight: 2
+  - skill: 稅務申報
+    weight: 2
+  - skill: erp
+    weight: 2
+  - skill: 外派
+    weight: 2
+  - skill: 財務長
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

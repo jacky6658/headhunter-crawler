@@ -1,0 +1,19 @@
+job_profile:
+  role_family: engineering
+  role_name: 產品經理 Product Manager
+  must_have:
+  - skill: 產品經理
+    weight: 8
+  - skill: product
+    weight: 7
+  core:
+  - skill: manager
+    weight: 5
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

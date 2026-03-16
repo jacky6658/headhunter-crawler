@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: PG-BE後端工程師
+  must_have:
+  - skill: 後端工程師
+    weight: 8
+  - skill: java
+    weight: 7
+  core:
+  - skill: c#
+    weight: 6
+  - skill: .net core
+    weight: 5
+  - skill: spring boot
+    weight: 4
+  nice_to_have:
+  - skill: restful api
+    weight: 4
+  - skill: sql
+    weight: 3
+  - skill: docker
+    weight: 2
+  - skill: kubernetes
+    weight: 2
+  - skill: git
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

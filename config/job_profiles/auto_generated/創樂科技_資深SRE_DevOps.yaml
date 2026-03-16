@@ -1,0 +1,35 @@
+job_profile:
+  role_family: engineering
+  role_name: 資深SRE/DevOps
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: devops
+    weight: 7
+  core:
+  - skill: kubernetes
+    weight: 6
+  - skill: aws
+    weight: 5
+  - skill: argocd
+    weight: 4
+  nice_to_have:
+  - skill: cloudflare
+    weight: 4
+  - skill: aliyun
+    weight: 3
+  - skill: ci/cd
+    weight: 2
+  - skill: gitlab
+    weight: 2
+  - skill: terraform
+    weight: 2
+  - skill: helm
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

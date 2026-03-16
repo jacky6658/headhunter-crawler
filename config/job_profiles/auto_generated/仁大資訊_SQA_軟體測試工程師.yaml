@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: SQA（軟體測試工程師）
+  must_have:
+  - skill: 軟體測試
+    weight: 8
+  - skill: sqa
+    weight: 7
+  core:
+  - skill: 測試計畫
+    weight: 6
+  - skill: 測試案例
+    weight: 5
+  - skill: 功能測試
+    weight: 4
+  nice_to_have:
+  - skill: 整合測試
+    weight: 4
+  - skill: 回歸測試
+    weight: 3
+  - skill: 缺陷追蹤
+    weight: 2
+  - skill: selenium
+    weight: 2
+  - skill: cypress
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

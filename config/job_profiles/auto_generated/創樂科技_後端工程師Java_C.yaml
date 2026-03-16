@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 後端工程師Java/C#
+  must_have:
+  - skill: 後端工程師
+    weight: 8
+  - skill: java
+    weight: 7
+  core:
+  - skill: c#
+    weight: 6
+  - skill: .net core
+    weight: 5
+  - skill: redis
+    weight: 4
+  nice_to_have:
+  - skill: kafka
+    weight: 4
+  - skill: mysql
+    weight: 3
+  - skill: mongodb
+    weight: 2
+  - skill: 高併發
+    weight: 2
+  - skill: 微服務架構
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

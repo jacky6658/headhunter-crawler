@@ -45,8 +45,19 @@ def _safe_urlopen(req, timeout=10):
 class Step1neClient:
     """連結 Step1ne Headhunter System API"""
 
-    def __init__(self, api_base_url: str = None):
+    def __init__(self, api_base_url: str = None, api_key: str = None):
         self.api_base = (api_base_url or '').rstrip('/')
+        self.api_key = api_key or ''
+
+    def _auth_headers(self) -> dict:
+        """回傳含認證的 headers"""
+        headers = {
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        }
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        return headers
 
     def is_connected(self) -> bool:
         """檢查是否已設定且可連線"""
@@ -54,14 +65,14 @@ class Step1neClient:
             return False
         try:
             req = Request(f"{self.api_base}/api/health",
-                          headers={'Accept': 'application/json'})
+                          headers=self._auth_headers())
             resp = _safe_urlopen(req, timeout=5)
             return resp.status == 200
         except Exception:
             # health endpoint 可能不存在，嘗試 /api/jobs
             try:
                 req = Request(f"{self.api_base}/api/jobs",
-                              headers={'Accept': 'application/json'})
+                              headers=self._auth_headers())
                 resp = _safe_urlopen(req, timeout=5)
                 return resp.status == 200
             except Exception:
@@ -82,7 +93,7 @@ class Step1neClient:
             return []
         try:
             req = Request(f"{self.api_base}/api/jobs",
-                          headers={'Accept': 'application/json'})
+                          headers=self._auth_headers())
             resp = _safe_urlopen(req, timeout=10)
             data = json.loads(resp.read().decode('utf-8'))
 
@@ -112,7 +123,7 @@ class Step1neClient:
             return {}
         try:
             req = Request(f"{self.api_base}/api/jobs/{job_id}",
-                          headers={'Accept': 'application/json'})
+                          headers=self._auth_headers())
             resp = _safe_urlopen(req, timeout=10)
             data = json.loads(resp.read().decode('utf-8'))
             return data if isinstance(data, dict) else data.get('data', {})
@@ -132,13 +143,12 @@ class Step1neClient:
                 'actor': actor,
             }).encode('utf-8')
 
+            headers = self._auth_headers()
+            headers['Content-Type'] = 'application/json'
             req = Request(
                 f"{self.api_base}/api/candidates/bulk",
                 data=payload,
-                headers={
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
+                headers=headers,
                 method='POST',
             )
             resp = _safe_urlopen(req, timeout=30)
@@ -170,13 +180,12 @@ class Step1neClient:
                 'actor': actor,
             }).encode('utf-8')
 
+            headers = self._auth_headers()
+            headers['Content-Type'] = 'application/json'
             req = Request(
                 f"{self.api_base}/api/crawler/import",
                 data=payload,
-                headers={
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
+                headers=headers,
                 method='POST',
             )
             resp = _safe_urlopen(req, timeout=60)

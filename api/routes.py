@@ -476,7 +476,11 @@ def update_settings():
         # 重新初始化 Step1ne client
         if data['step1ne'].get('api_base_url'):
             from integration.step1ne_client import Step1neClient
-            current_app.config['STEP1NE_CLIENT'] = Step1neClient(data['step1ne']['api_base_url'])
+            merged_s1 = {**config.get('step1ne', {}), **data['step1ne']}
+            current_app.config['STEP1NE_CLIENT'] = Step1neClient(
+                api_base_url=merged_s1['api_base_url'],
+                api_key=merged_s1.get('api_key', '')
+            )
         else:
             current_app.config['STEP1NE_CLIENT'] = None
 

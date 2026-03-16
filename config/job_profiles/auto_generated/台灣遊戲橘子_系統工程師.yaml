@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 系統工程師
+  must_have:
+  - skill: 系統工程師
+    weight: 8
+  - skill: powershell
+    weight: 7
+  core:
+  - skill: system engineer
+    weight: 5
+  - skill: aws
+    weight: 5
+  - skill: azure
+    weight: 4
+  nice_to_have:
+  - skill: gcp
+    weight: 4
+  - skill: mcse
+    weight: 3
+  - skill: server monitoring
+    weight: 2
+  - skill: script
+    weight: 2
+  - skill: 系統管理
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

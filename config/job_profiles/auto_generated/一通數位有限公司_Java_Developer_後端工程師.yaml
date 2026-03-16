@@ -1,0 +1,29 @@
+job_profile:
+  role_family: engineering
+  role_name: Java Developer (後端工程師)
+  must_have:
+  - skill: java
+    weight: 8
+  - skill: spring boot
+    weight: 7
+  core: []
+  nice_to_have:
+  - skill: microservices
+    weight: 4
+  - skill: kubernetes
+    weight: 3
+  - skill: redis
+    weight: 2
+  - skill: mongodb
+    weight: 2
+  - skill: message queue
+    weight: 2
+  - skill: fintech
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

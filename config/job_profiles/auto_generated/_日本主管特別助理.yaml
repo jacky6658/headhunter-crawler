@@ -1,0 +1,32 @@
+job_profile:
+  role_family: engineering
+  role_name: 日本主管特別助理
+  must_have:
+  - skill: 主管助理
+    weight: 8
+  - skill: executive assistant
+    weight: 7
+  core:
+  - skill: 秘書
+    weight: 6
+  - skill: 日文翻譯
+    weight: 5
+  nice_to_have:
+  - skill: 日語n1
+    weight: 4
+  - skill: n2
+    weight: 3
+  - skill: 口譯
+    weight: 2
+  - skill: 筆譯
+    weight: 2
+  - skill: 行程管理
+    weight: 2
+  - skill: 會議記錄
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

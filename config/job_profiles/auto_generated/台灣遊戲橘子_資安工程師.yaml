@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 資安工程師
+  must_have:
+  - skill: 資安工程師
+    weight: 8
+  - skill: devops
+    weight: 7
+  core:
+  - skill: security engineer
+    weight: 5
+  - skill: sdlc
+    weight: 5
+  - skill: 資安測試
+    weight: 4
+  nice_to_have:
+  - skill: web開發
+    weight: 4
+  - skill: app開發
+    weight: 3
+  - skill: 滲透測試
+    weight: 2
+  - skill: owasp
+    weight: 2
+  - skill: 弱點掃描
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

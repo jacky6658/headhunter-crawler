@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: 資深後端工程師 Senior Backend Engineer
+  must_have:
+  - skill: python
+    weight: 8
+  - skill: java
+    weight: 7
+  core:
+  - skill: nodejs
+    weight: 6
+  nice_to_have:
+  - skill: docker
+    weight: 4
+  - skill: postgresql
+    weight: 3
+  - skill: redis
+    weight: 2
+  - skill: rest
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北
