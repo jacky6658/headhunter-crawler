@@ -91,7 +91,7 @@ async def browse_feed(page):
 
 
 async def try_save_to_pdf(page) -> bool:
-    """嘗試用 LinkedIn 原生的「存為 PDF」下載（一度連結）"""
+    """嘗試用 LinkedIn 原生的「存為 PDF」下載（一度/非一度皆可）"""
     try:
         # 找「更多」按鈕
         more_btn = page.locator("button:has-text('More'), button:has-text('更多')").first

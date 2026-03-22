@@ -277,7 +277,7 @@ def linkedin_download_and_enrich(candidates: list, job: dict) -> list:
     B/C 層：LinkedIn 深度審核 + PDF 下載 + 資料充實
 
     透過 Playwright CDP 連接本機 Chrome，逐一訪問 LinkedIn profile：
-    1. 下載 PDF 履歷（一度用原生下載，非一度用 page.pdf()）
+    1. 下載 PDF 履歷（一度/非一度都用「更多→存為 PDF」，失敗才用 page.pdf() 備援）
     2. 讀取頁面文字提取 work_history / education / skills
     3. 執行 B 層（submission_criteria）和 C 層（talent_profile）檢查
     4. 回傳充實後的候選人資料
