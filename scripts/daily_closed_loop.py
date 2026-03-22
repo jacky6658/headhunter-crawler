@@ -161,10 +161,20 @@ def save_checkpoint(data: dict):
 # 核心流程
 # ──────────────────────────────────────────
 def get_active_jobs() -> list:
-    """取得所有招募中的職缺"""
+    """取得所有招募中的職缺，按優先度排序（high 優先）"""
     r = api_get("/api/jobs")
     jobs = r if isinstance(r, list) else r.get("jobs", r.get("data", []))
-    return [j for j in jobs if j.get("job_status") == "招募中"]
+    active = [j for j in jobs if j.get("job_status") == "招募中"]
+
+    # 優先度排序：high > medium > low > 未設定
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    active.sort(key=lambda j: priority_order.get((j.get("priority") or "").lower(), 3))
+
+    high = [j for j in active if (j.get("priority") or "").lower() == "high"]
+    if high:
+        log.info(f"  Priority HIGH: {len(high)} jobs ({', '.join(f'#{j[\"id\"]}' for j in high)})")
+
+    return active
 
 
 def create_crawler_task(job: dict) -> str | None:
