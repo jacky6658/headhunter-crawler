@@ -602,6 +602,43 @@ def notify_ceo(message: str, metadata: dict = None):
         log.warning(f"  Failed to notify CEO: {e}")
 
 
+def notify_consultant(job: dict, imported_count: int, grades: dict):
+    """
+    通知負責顧問：有新候選人匯入（前端鈴鐺會看到）
+
+    grades 格式: {"A+": 2, "A": 5, "B": 6, "C": 2}
+    """
+    # 取得職缺的負責顧問（從 consultant_notes 或 recruiter 欄位推斷）
+    # 預設通知所有顧問（透過不指定 uid）
+    job_name = job.get("position_name", "")
+    client = job.get("client_company", "")
+    job_id = job.get("id", "")
+
+    grade_summary = "、".join(f"{g}: {n}人" for g, n in grades.items() if n > 0)
+
+    try:
+        api_post("/api/notifications", {
+            "title": f"🆕 新候選人匯入 — #{job_id} {job_name}",
+            "message": (
+                f"閉環自動匯入 {imported_count} 位候選人\n"
+                f"職缺：#{job_id} {job_name}（{client}）\n"
+                f"評級分佈：{grade_summary}\n"
+                f"請至人選管理查看並跟進"
+            ),
+            "type": "import",
+            "metadata": {
+                "from": OPERATOR,
+                "task_type": "closed_loop_import",
+                "job_id": job_id,
+                "imported_count": imported_count,
+                "grades": grades
+            }
+        })
+        log.info(f"  Notified consultants: {imported_count} candidates for #{job_id}")
+    except Exception as e:
+        log.warning(f"  Failed to notify consultants: {e}")
+
+
 # ──────────────────────────────────────────
 # 主流程
 # ──────────────────────────────────────────
@@ -732,6 +769,14 @@ def main():
             # Step 7: PDF 上傳統計
             pdf_up = result.get("pdf_uploaded", 0)
             pdf_parse = result.get("pdf_parsed", 0)
+
+            # Step 8: 通知顧問（前端鈴鐺 🔔）
+            if result["imported"] > 0:
+                grades = {}
+                for c in enriched:
+                    g = c.get("grade", c.get("match_grade", "B"))
+                    grades[g] = grades.get(g, 0) + 1
+                notify_consultant(job, result["imported"], grades)
 
             # 更新鎖定 & checkpoint
             unlock_job(job_id, f"completed:searched={len(results)},passed={len(passed)},imported={result['imported']},pdf={pdf_up}")
