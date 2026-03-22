@@ -1,0 +1,4 @@
+# PDF files (contain candidate personal data, do not commit)
+*.pdf
+# Keep directory structure
+!.gitkeep
