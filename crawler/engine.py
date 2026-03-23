@@ -40,8 +40,11 @@ class SearchEngine:
 
         self.ad = AntiDetect(config)
         self.ocr = CrawlerOCR(config)
+        step1ne_cfg = config.get('step1ne', {})
         self.dedup = DedupCache(
-            config.get('dedup', {}).get('cache_file', 'data/dedup_cache.json')
+            config.get('dedup', {}).get('cache_file', 'data/dedup_cache.json'),
+            api_base=step1ne_cfg.get('api_base_url'),
+            api_key=step1ne_cfg.get('api_key')
         )
 
         self.linkedin_searcher = LinkedInSearcher(config, self.ad, self.ocr,

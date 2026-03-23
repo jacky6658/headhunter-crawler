@@ -54,6 +54,35 @@ class TelegramNotifier:
         has_linkedin = sum(1 for c in candidates if getattr(c, 'linkedin_url', ''))
         has_email = sum(1 for c in candidates if getattr(c, 'email', '') and getattr(c, 'email', '') != 'unknown@github.com')
 
+        # 候選人名單（按評分排序）
+        sorted_candidates = sorted(candidates, key=lambda c: getattr(c, 'score', 0) or 0, reverse=True)
+        candidate_lines = []
+        for c in sorted_candidates[:30]:  # 最多列 30 人避免訊息過長
+            name = self._esc(getattr(c, 'name', '') or getattr(c, 'full_name', '未知'))
+            title = self._esc(getattr(c, 'current_title', '') or getattr(c, 'headline', '') or '')
+            li_url = getattr(c, 'linkedin_url', '') or ''
+            email = getattr(c, 'email', '') or ''
+            grade = getattr(c, 'grade', '') or getattr(c, 'talent_level', '')
+
+            contact = ''
+            if li_url:
+                contact = f" [LinkedIn]({li_url})"
+            elif email and email != 'unknown@github.com':
+                contact = f" 📧 {self._esc(email)}"
+
+            grade_icon = {'S': '🟣', 'A': '🔵', 'B': '🟢', 'C': '🟡', 'D': '🔴'}.get(grade, '⚪')
+            line = f"{grade_icon} {name}"
+            if title:
+                line += f" — {title[:30]}"
+            if contact:
+                line += contact
+            candidate_lines.append(line)
+
+        name_list = '\n'.join(candidate_lines) if candidate_lines else '（無候選人）'
+        remaining = max(0, total - 30)
+        if remaining > 0:
+            name_list += f"\n...還有 {remaining} 人"
+
         msg = (
             f"✅ *爬蟲任務完成*\n"
             f"━━━━━━━━━━━━━━━━━━\n"
@@ -61,14 +90,11 @@ class TelegramNotifier:
             f"🕐 完成時間: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
             f"\n"
             f"👥 *候選人: {total} 位*\n"
-            f"  💼 LinkedIn: {li_count}\n"
-            f"  🐙 GitHub: {gh_count}\n"
+            f"  💼 LinkedIn: {li_count} | 🐙 GitHub: {gh_count}\n"
+            f"  📊 {grade_text or '尚未評分'}\n"
             f"\n"
-            f"📊 *評分分佈*\n"
-            f"  {grade_text or '尚未評分'}\n"
-            f"\n"
-            f"🔗 有 LinkedIn: {has_linkedin}/{total}\n"
-            f"📧 有 Email: {has_email}/{total}\n"
+            f"📋 *名單*\n"
+            f"{name_list}\n"
         )
 
         # Auto-push 狀態
@@ -110,20 +136,34 @@ class TelegramNotifier:
         self._send(msg)
 
     def notify_auto_push_result(self, task, result: dict):
-        """Auto-push 結果通知"""
+        """Auto-push 結果通知 — 包含新增候選人名單"""
         if not self.enabled:
             return
 
         created = result.get('created_count', 0)
         updated = result.get('updated_count', 0)
+        skipped = result.get('skipped_count', 0)
         success = result.get('success', False)
 
         if success:
+            job_id = getattr(task, 'step1ne_job_id', None) or ''
+
             msg = (
-                f"🚀 *Auto-Push 完成*\n"
+                f"🚀 *新候選人已匯入系統*\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
                 f"📋 {self._esc(task.client_name)} — {self._esc(task.job_title)}\n"
-                f"✨ 新增: {created} | 更新: {updated}\n"
+                f"✨ 新增 *{created}* 位 | 更新 {updated} 位\n"
             )
+
+            if created > 0:
+                # 前端系統連結 — 直接帶篩選參數
+                system_url = "https://hrsystem.step1ne.com"
+                msg += (
+                    f"\n👉 *請立即到系統處理：*\n"
+                    f"[打開系統 → 今日新增]({system_url})\n"
+                    f"點「*今日新增*」→ 職缺篩選「*{self._esc(task.job_title[:25])}*」\n"
+                    f"狀態為「*未開始*」的就是剛匯入的新人選\n"
+                )
         else:
             msg = (
                 f"⚠️ *Auto-Push 失敗*\n"
