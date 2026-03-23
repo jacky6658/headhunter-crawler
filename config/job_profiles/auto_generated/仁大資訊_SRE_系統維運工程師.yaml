@@ -1,0 +1,35 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE（系統維運工程師）
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: 系統維運
+    weight: 7
+  core:
+  - skill: devops
+    weight: 6
+  - skill: site reliability engineer
+    weight: 5
+  nice_to_have:
+  - skill: linux
+    weight: 4
+  - skill: docker
+    weight: 3
+  - skill: kubernetes
+    weight: 2
+  - skill: ci/cd
+    weight: 2
+  - skill: 監控
+    weight: 2
+  - skill: aws
+    weight: 2
+  - skill: gcp
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

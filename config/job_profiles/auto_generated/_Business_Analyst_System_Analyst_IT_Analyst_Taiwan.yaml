@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Business Analyst System Analyst IT Analyst Taiwan
+  must_have:
+  - skill: requirements analysis
+    weight: 8
+  - skill: sql
+    weight: 7
+  core:
+  - skill: business analyst
+    weight: 5
+  - skill: system analyst
+    weight: 5
+  - skill: it analyst
+    weight: 5
+  nice_to_have:
+  - skill: java
+    weight: 4
+  - skill: c#
+    weight: 3
+  - skill: spring boot
+    weight: 2
+  - skill: .net
+    weight: 2
+  - skill: api design
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

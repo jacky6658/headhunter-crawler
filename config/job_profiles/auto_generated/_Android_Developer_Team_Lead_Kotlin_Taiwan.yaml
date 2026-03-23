@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Android Developer Team Lead Kotlin Taiwan
+  must_have:
+  - skill: android
+    weight: 8
+  - skill: kotlin
+    weight: 7
+  core:
+  - skill: android developer
+    weight: 5
+  - skill: mobile developer
+    weight: 5
+  - skill: team lead
+    weight: 5
+  nice_to_have:
+  - skill: mvvm
+    weight: 4
+  - skill: jetpack
+    weight: 3
+  - skill: coroutine
+    weight: 2
+  - skill: unit test
+    weight: 2
+  - skill: scrum
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

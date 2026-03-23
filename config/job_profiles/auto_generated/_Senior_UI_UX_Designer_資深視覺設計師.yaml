@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Senior UI/UX Designer 資深視覺設計師
+  must_have:
+  - skill: figma (design system
+    weight: 8
+  - skill: auto layout
+    weight: 7
+  core:
+  - skill: variables)
+    weight: 6
+  - skill: ui/ux設計
+    weight: 5
+  - skill: rwd
+    weight: 4
+  nice_to_have:
+  - skill: web/ios/android
+    weight: 4
+  - skill: 視覺設計
+    weight: 3
+  - skill: ai工具 (chatgpt
+    weight: 2
+  - skill: freepik
+    weight: 2
+  - skill: imagineart)
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

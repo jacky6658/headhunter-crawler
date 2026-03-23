@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: '機房維運工程師
+
+    (實體於中和面談)'
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: tcp/ip
+    weight: 7
+  core:
+  - skill: 系統維護
+    weight: 6
+  - skill: 資安證照
+    weight: 5
+  - skill: 網路管理
+    weight: 4
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

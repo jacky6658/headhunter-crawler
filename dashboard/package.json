@@ -1,0 +1,13 @@
+{
+  "name": "lobster-dashboard",
+  "version": "1.0.0",
+  "description": "龍蝦工作流程可視化面板",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "pg": "^8.11.0"
+  }
+}

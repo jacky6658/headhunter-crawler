@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: PG-FE（前端開發工程師）
+  must_have:
+  - skill: html5
+    weight: 8
+  - skill: css3
+    weight: 7
+  core:
+  - skill: javascript
+    weight: 6
+  - skill: vue
+    weight: 5
+  - skill: react
+    weight: 4
+  nice_to_have:
+  - skill: angular
+    weight: 4
+  - skill: rwd
+    weight: 3
+  - skill: api串接
+    weight: 2
+  - skill: git
+    weight: 2
+  - skill: typescript
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

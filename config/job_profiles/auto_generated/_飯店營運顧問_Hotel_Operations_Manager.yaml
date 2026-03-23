@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: 飯店營運顧問 Hotel Operations Manager
+  must_have:
+  - skill: 飯店營運
+    weight: 8
+  - skill: 服務式公寓
+    weight: 7
+  core:
+  - skill: 包租代管
+    weight: 6
+  - skill: sop建置
+    weight: 5
+  - skill: 訂房系統
+    weight: 4
+  nice_to_have:
+  - skill: 團隊管理
+    weight: 4
+  - skill: 營運架構設計
+    weight: 3
+  - skill: ota
+    weight: 2
+  - skill: pms
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

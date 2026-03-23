@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE Site Reliability Engineer DevOps
+  must_have:
+  - skill: devops
+    weight: 8
+  - skill: ci/cd
+    weight: 7
+  core:
+  - skill: site reliability engineer
+    weight: 5
+  - skill: jenkins
+    weight: 5
+  - skill: linux
+    weight: 4
+  nice_to_have:
+  - skill: gitlab ci
+    weight: 4
+  - skill: github actions
+    weight: 3
+  - skill: kubernetes
+    weight: 2
+  - skill: monitoring
+    weight: 2
+  - skill: bash
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

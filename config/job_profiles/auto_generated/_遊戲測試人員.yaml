@@ -1,0 +1,19 @@
+job_profile:
+  role_family: engineering
+  role_name: 遊戲測試人員
+  must_have:
+  - skill: 遊戲測試
+    weight: 8
+  - skill: bug追蹤
+    weight: 7
+  core:
+  - skill: fps遊戲
+    weight: 6
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

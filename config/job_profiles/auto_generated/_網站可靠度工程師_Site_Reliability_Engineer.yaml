@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 網站可靠度工程師(Site Reliability Engineer)
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: docker
+    weight: 7
+  core:
+  - skill: kubernetes
+    weight: 6
+  - skill: monitoring systems
+    weight: 5
+  - skill: log collection
+    weight: 4
+  nice_to_have:
+  - skill: rdbms/nosql
+    weight: 4
+  - skill: security
+    weight: 3
+  - skill: terraform
+    weight: 2
+  - skill: prometheus
+    weight: 2
+  - skill: azure
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

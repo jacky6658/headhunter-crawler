@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: QA Engineer Software Test SQA
+  must_have:
+  - skill: software testing
+    weight: 8
+  - skill: test automation
+    weight: 7
+  core:
+  - skill: qa engineer
+    weight: 5
+  - skill: selenium
+    weight: 5
+  - skill: api testing
+    weight: 4
+  nice_to_have:
+  - skill: cypress
+    weight: 4
+  - skill: jira
+    weight: 3
+  - skill: testrail
+    weight: 2
+  - skill: regression testing
+    weight: 2
+  - skill: test cases
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

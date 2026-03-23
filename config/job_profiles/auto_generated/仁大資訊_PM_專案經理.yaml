@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: PM（專案經理）
+  must_have:
+  - skill: 專案經理
+    weight: 8
+  - skill: pm
+    weight: 7
+  core:
+  - skill: project manager
+    weight: 5
+  nice_to_have:
+  - skill: 敏捷開發
+    weight: 4
+  - skill: scrum
+    weight: 3
+  - skill: jira
+    weight: 2
+  - skill: 專案管理
+    weight: 2
+  - skill: pmp
+    weight: 2
+  - skill: 軟體開發
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

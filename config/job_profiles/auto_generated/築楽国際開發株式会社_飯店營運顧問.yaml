@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 飯店營運顧問
+  must_have:
+  - skill: 飯店總監
+    weight: 8
+  - skill: hotel gm
+    weight: 7
+  core:
+  - skill: hotel general manager
+    weight: 5
+  - skill: hospitality director
+    weight: 5
+  nice_to_have:
+  - skill: 服務式公寓 總監
+    weight: 4
+  - skill: 民宿 營運主管
+    weight: 3
+  - skill: 度假村 gm
+    weight: 2
+  - skill: resort operations director
+    weight: 2
+  - skill: ota 飯店管理
+    weight: 2
+  - skill: serviced apartment manager
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

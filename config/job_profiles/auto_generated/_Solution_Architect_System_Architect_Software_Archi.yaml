@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Solution Architect System Architect Software Architect
+  must_have:
+  - skill: system design
+    weight: 8
+  - skill: api design
+    weight: 7
+  core:
+  - skill: solution architect
+    weight: 5
+  - skill: software architect
+    weight: 5
+  - skill: microservices
+    weight: 4
+  nice_to_have:
+  - skill: sql
+    weight: 4
+  - skill: redis
+    weight: 3
+  - skill: docker
+    weight: 2
+  - skill: kubernetes
+    weight: 2
+  - skill: code review
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

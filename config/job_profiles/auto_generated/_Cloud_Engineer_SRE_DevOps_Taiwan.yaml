@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Cloud Engineer SRE DevOps Taiwan
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: cloud engineering
+    weight: 7
+  core:
+  - skill: sre
+    weight: 6
+  - skill: devops
+    weight: 5
+  - skill: infrastructure
+    weight: 4
+  nice_to_have:
+  - skill: ci/cd
+    weight: 4
+  - skill: aws
+    weight: 3
+  - skill: gcp
+    weight: 2
+  - skill: networking
+    weight: 2
+  - skill: on-call
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

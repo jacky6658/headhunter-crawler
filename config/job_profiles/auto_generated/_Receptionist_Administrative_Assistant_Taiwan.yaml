@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Receptionist Administrative Assistant Taiwan
+  must_have:
+  - skill: receptionist
+    weight: 8
+  - skill: administrative assistant
+    weight: 7
+  core:
+  - skill: front desk
+    weight: 6
+  - skill: office administration
+    weight: 5
+  - skill: customer service
+    weight: 4
+  nice_to_have:
+  - skill: 文書處理
+    weight: 4
+  - skill: 行政庶務
+    weight: 3
+  - skill: microsoft office
+    weight: 2
+  - skill: phone handling
+    weight: 2
+  - skill: visitor reception
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

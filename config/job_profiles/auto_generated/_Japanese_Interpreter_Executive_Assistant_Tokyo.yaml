@@ -1,0 +1,32 @@
+job_profile:
+  role_family: engineering
+  role_name: Japanese Interpreter Executive Assistant Tokyo
+  must_have:
+  - skill: japanese
+    weight: 8
+  - skill: interpreter
+    weight: 7
+  core:
+  - skill: bilingual
+    weight: 6
+  - skill: executive assistant
+    weight: 5
+  - skill: translation
+    weight: 4
+  nice_to_have:
+  - skill: chinese japanese
+    weight: 4
+  - skill: n1
+    weight: 3
+  - skill: n2
+    weight: 2
+  - skill: secretary
+    weight: 2
+  - skill: schedule management
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

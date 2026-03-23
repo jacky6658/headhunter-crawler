@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: '雲端維運工程師
+
+    (需 on-call)'
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: windows
+    weight: 7
+  core:
+  - skill: git
+    weight: 6
+  - skill: 網路架構
+    weight: 5
+  - skill: sdlc
+    weight: 4
+  nice_to_have:
+  - skill: ci/cd
+    weight: 4
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

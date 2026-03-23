@@ -1,0 +1,29 @@
+job_profile:
+  role_family: engineering
+  role_name: UI/UX（設計師）
+  must_have:
+  - skill: ui設計師
+    weight: 8
+  - skill: ux設計師
+    weight: 7
+  core:
+  - skill: ui/ux designer
+    weight: 5
+  nice_to_have:
+  - skill: figma
+    weight: 4
+  - skill: 使用者體驗
+    weight: 3
+  - skill: 介面設計
+    weight: 2
+  - skill: sketch
+    weight: 2
+  - skill: prototype
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

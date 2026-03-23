@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: 系統維運工程師 (DevOps)
+  must_have:
+  - skill: devops
+    weight: 8
+  - skill: ci/cd
+    weight: 7
+  core:
+  - skill: jenkins
+    weight: 6
+  - skill: gitlab ci
+    weight: 5
+  - skill: docker
+    weight: 4
+  nice_to_have:
+  - skill: kubernetes
+    weight: 4
+  - skill: mongodb
+    weight: 3
+  - skill: mysql
+    weight: 2
+  - skill: redis
+    weight: 2
+  - skill: kafka
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

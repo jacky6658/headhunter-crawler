@@ -1,0 +1,23 @@
+job_profile:
+  role_family: engineering
+  role_name: 資深後端工程師 Senior Backend Engineer
+  must_have:
+  - skill: golang
+    weight: 8
+  - skill: api開發
+    weight: 7
+  core:
+  - skill: 資料庫效能優化
+    weight: 6
+  - skill: 高流量高併發
+    weight: 5
+  - skill: 後台管理系統
+    weight: 4
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

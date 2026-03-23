@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: DBA（資料庫管理人員）
+  must_have:
+  - skill: sql server
+    weight: 8
+  - skill: oracle
+    weight: 7
+  core:
+  - skill: mysql
+    weight: 6
+  - skill: dba
+    weight: 5
+  - skill: 資料庫架構
+    weight: 4
+  nice_to_have:
+  - skill: 備份還原
+    weight: 4
+  - skill: 權限管理
+    weight: 3
+  - skill: 監控
+    weight: 2
+  - skill: sql優化
+    weight: 2
+  - skill: 高可用
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

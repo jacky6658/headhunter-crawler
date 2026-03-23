@@ -1,0 +1,19 @@
+job_profile:
+  role_family: engineering
+  role_name: 雲端機房技術客服
+  must_have:
+  - skill: 客服
+    weight: 8
+  - skill: it支援
+    weight: 7
+  core:
+  - skill: 雲端機房
+    weight: 6
+  nice_to_have: []
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

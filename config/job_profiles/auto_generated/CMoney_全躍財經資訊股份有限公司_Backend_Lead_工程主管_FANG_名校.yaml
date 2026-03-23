@@ -1,0 +1,39 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Lead 工程主管 (FANG 名校)
+  must_have:
+  - skill: 工程主管
+    weight: 8
+  - skill: 後端主管
+    weight: 7
+  core:
+  - skill: backend lead
+    weight: 5
+  - skill: tech lead
+    weight: 5
+  nice_to_have:
+  - skill: google
+    weight: 4
+  - skill: amazon
+    weight: 3
+  - skill: microsoft
+    weight: 2
+  - skill: 交大
+    weight: 2
+  - skill: 成大
+    weight: 2
+  - skill: 清大
+    weight: 2
+  - skill: c#
+    weight: 2
+  - skill: 分散式系統
+    weight: 2
+  - skill: 高併發
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

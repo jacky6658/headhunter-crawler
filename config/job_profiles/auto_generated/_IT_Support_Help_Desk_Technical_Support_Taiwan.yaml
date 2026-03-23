@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: IT Support Help Desk Technical Support Taiwan
+  must_have:
+  - skill: it support
+    weight: 8
+  - skill: help desk
+    weight: 7
+  core:
+  - skill: technical support
+    weight: 6
+  - skill: customer service
+    weight: 5
+  - skill: cloud
+    weight: 4
+  nice_to_have:
+  - skill: network
+    weight: 4
+  - skill: server
+    weight: 3
+  - skill: windows
+    weight: 2
+  - skill: troubleshooting
+    weight: 2
+  - skill: it operations
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

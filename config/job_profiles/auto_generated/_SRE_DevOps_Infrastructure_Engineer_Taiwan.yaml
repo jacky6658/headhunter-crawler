@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE DevOps Infrastructure Engineer Taiwan
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: devops
+    weight: 7
+  core:
+  - skill: site reliability engineer
+    weight: 5
+  - skill: docker
+    weight: 5
+  - skill: kubernetes
+    weight: 4
+  nice_to_have:
+  - skill: linux
+    weight: 4
+  - skill: terraform
+    weight: 3
+  - skill: monitoring
+    weight: 2
+  - skill: prometheus
+    weight: 2
+  - skill: aws
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北
