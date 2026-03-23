@@ -71,7 +71,9 @@ class LocalStore:
 
             for c in candidates:
                 # 去重：查已有資料（LinkedIn URL 或 GitHub URL）
-                if self._is_duplicate(c.linkedin_url, c.github_url):
+                # is_duplicate 標記的候選人仍然寫入，供龍蝦端查看
+                is_dup_flag = getattr(c, 'is_duplicate', False)
+                if not is_dup_flag and self._is_duplicate(c.linkedin_url, c.github_url):
                     skipped_count += 1
                     continue
 
@@ -93,17 +95,18 @@ class LocalStore:
                 existing.append(c_dict)
                 new_count += 1
 
-                # 加入已處理紀錄
-                self._processed.append({
-                    'linkedin_url': c.linkedin_url or '',
-                    'github_url': c.github_url or '',
-                    'name': c.name or '',
-                    'client_name': client_name,
-                    'job_title': c.job_title or '',
-                    'imported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'status': 'new',
-                    'system_id': '',
-                })
+                # 重複標記的候選人不加入已處理紀錄（避免影響去重追蹤）
+                if not is_dup_flag:
+                    self._processed.append({
+                        'linkedin_url': c.linkedin_url or '',
+                        'github_url': c.github_url or '',
+                        'name': c.name or '',
+                        'client_name': client_name,
+                        'job_title': c.job_title or '',
+                        'imported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'status': 'new',
+                        'system_id': '',
+                    })
 
             self._save_candidates()
             self._save_processed()

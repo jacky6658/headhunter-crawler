@@ -530,12 +530,14 @@ class SearchEngine:
         # key: normalized linkedin_url → value: candidates list 中的 index
         li_url_index: dict = {}
 
+        dup_count = 0
+
         # ── Phase 1: LinkedIn 候選人 ──
         for item in linkedin_data:
             li_url = item.get('linkedin_url', '')
-            if self.dedup.is_seen(linkedin_url=li_url):
-                continue
-            self.dedup.mark_seen(linkedin_url=li_url)
+            is_dup = self.dedup.is_seen(linkedin_url=li_url)
+            if not is_dup:
+                self.dedup.mark_seen(linkedin_url=li_url)
 
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
@@ -566,7 +568,10 @@ class SearchEngine:
                 search_date=today,
                 status='new',
                 created_at=now,
+                is_duplicate=is_dup,
             )
+            if is_dup:
+                dup_count += 1
             candidates.append(candidate)
 
             # 建立 LinkedIn URL 索引（用於跨來源比對）
@@ -578,8 +583,7 @@ class SearchEngine:
         merged_count = 0
         for item in github_data:
             gh_username = item.get('github_username', '')
-            if self.dedup.is_seen(github_username=gh_username):
-                continue
+            gh_is_dup = self.dedup.is_seen(github_username=gh_username)
 
             name = item.get('name', '').strip()
             if not name or len(name) < 2:
@@ -627,7 +631,8 @@ class SearchEngine:
                 existing.top_repos_detail = item.get('top_repos_detail', [])
                 existing.languages = item.get('languages', {})
 
-                self.dedup.mark_seen(github_username=gh_username)
+                if not gh_is_dup:
+                    self.dedup.mark_seen(github_username=gh_username)
                 merged_count += 1
                 logger.info(
                     f"跨來源合併: GitHub '{name}' → LinkedIn '{existing.name}' "
@@ -640,10 +645,11 @@ class SearchEngine:
                 # 已在上方處理
                 continue
 
-            self.dedup.mark_seen(github_username=gh_username)
-            # 也標記 LinkedIn URL 防止後續 GitHub 候選人重複
-            if gh_li_url:
-                self.dedup.mark_seen(linkedin_url=gh_li_url)
+            if not gh_is_dup:
+                self.dedup.mark_seen(github_username=gh_username)
+                # 也標記 LinkedIn URL 防止後續 GitHub 候選人重複
+                if gh_li_url:
+                    self.dedup.mark_seen(linkedin_url=gh_li_url)
 
             candidate = Candidate(
                 id=str(uuid.uuid4()),
@@ -675,7 +681,10 @@ class SearchEngine:
                 search_date=today,
                 status='new',
                 created_at=now,
+                is_duplicate=gh_is_dup,
             )
+            if gh_is_dup:
+                dup_count += 1
             candidates.append(candidate)
 
             # 加入 URL 索引（防止後續 GitHub 候選人與此人重複）
@@ -686,5 +695,7 @@ class SearchEngine:
             logger.info(f"跨來源去重完成: 合併 {merged_count} 位重複候選人 (LinkedIn+GitHub)")
         if org_filtered:
             logger.info(f"組織帳號過濾: 排除 {org_filtered} 個公司/組織帳號")
+        if dup_count:
+            logger.info(f"重複候選人標記: {dup_count} 位 (is_duplicate=True，仍保留在結果中)")
 
         return candidates

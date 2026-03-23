@@ -43,6 +43,7 @@ class Candidate:
     # 狀態
     status: str = "new"                # new / imported / reviewed / skipped
     created_at: str = ""
+    is_duplicate: bool = False         # 去重標記：已在快取中見過但仍保留供人工判斷
 
     # 評分（技能評分系統）
     score: int = 0                     # 總分 0-100
@@ -112,6 +113,7 @@ class Candidate:
             self.ai_recommendation,
             self.ai_match_result,
             self.ai_report,
+            self.is_duplicate,
         ]
 
     @staticmethod
@@ -130,6 +132,7 @@ class Candidate:
             # AI 評分
             "ai_score", "ai_grade", "ai_recommendation",
             "ai_match_result", "ai_report",
+            "is_duplicate",
         ]
 
 
