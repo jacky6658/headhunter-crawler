@@ -94,14 +94,26 @@ def fetch_candidates_needing_pdf() -> list:
     """
     cutoff = datetime.now() - timedelta(days=DAYS_LOOKBACK)
     candidates = []
-    offset = 0
     page_size = 200
     max_pages = 15  # 安全上限：最多翻 15 頁（3000 人）
     pages_fetched = 0
     out_of_range_count = 0
 
-    while pages_fetched < max_pages:
-        url = f"{API_BASE}/api/candidates?limit={page_size}&offset={offset}&sort=-id"
+    # API sort=-id 不生效，所以從最後幾頁開始倒著掃（最新的在最後）
+    # 先取 total 算出起始 offset
+    try:
+        r0 = requests.get(f"{API_BASE}/api/candidates?limit=1", headers=HEADERS, timeout=15)
+        total = r0.json().get("total", 0)
+    except Exception:
+        total = 3000  # fallback
+
+    # 從最後一頁往前掃
+    start_offset = max(0, total - page_size)
+    offset = start_offset
+    log.info(f"Total candidates: {total}, starting from offset={offset}")
+
+    while pages_fetched < max_pages and offset >= 0:
+        url = f"{API_BASE}/api/candidates?limit={page_size}&offset={offset}"
         log.info(f"Fetching candidates (offset={offset})...")
         try:
             r = requests.get(url, headers=HEADERS, timeout=30)
@@ -155,9 +167,9 @@ def fetch_candidates_needing_pdf() -> list:
             log.info(f"All {len(rows)} candidates on this page are older than {DAYS_LOOKBACK} days. Stopping.")
             break
 
-        total = data.get("total", data.get("pagination", {}).get("total", 0))
-        offset += page_size
-        if offset >= total or len(rows) < page_size:
+        # 往前翻一頁
+        offset -= page_size
+        if offset < 0:
             break
 
     log.info(f"Fetched {pages_fetched} pages, found {len(candidates)} candidates needing PDF")
