@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Product Manager APP Product Manager
+  must_have:
+  - skill: product management
+    weight: 8
+  - skill: 數位產品
+    weight: 7
+  core:
+  - skill: app
+    weight: 6
+  nice_to_have:
+  - skill: prompt engineering
+    weight: 4
+  - skill: 英文溝通
+    weight: 3
+  - skill: 市場調查
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

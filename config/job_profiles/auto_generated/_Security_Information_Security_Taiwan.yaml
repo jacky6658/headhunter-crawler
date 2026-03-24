@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Security Information Security Taiwan
+  must_have:
+  - skill: security
+    weight: 8
+  - skill: cybersecurity
+    weight: 7
+  core:
+  - skill: infosec
+    weight: 6
+  - skill: 資安工程師
+    weight: 5
+  - skill: siem
+    weight: 4
+  nice_to_have:
+  - skill: iso 27001
+    weight: 4
+  - skill: firewall
+    weight: 3
+  - skill: linux
+    weight: 2
+  - skill: network
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

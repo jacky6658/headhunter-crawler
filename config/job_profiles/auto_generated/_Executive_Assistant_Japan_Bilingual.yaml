@@ -1,0 +1,30 @@
+job_profile:
+  role_family: engineering
+  role_name: Executive Assistant Japan Bilingual
+  must_have:
+  - skill: executive assistant
+    weight: 8
+  - skill: special assistant
+    weight: 7
+  core:
+  - skill: 助理
+    weight: 6
+  - skill: 秘書
+    weight: 5
+  - skill: bilingual assistant
+    weight: 4
+  nice_to_have:
+  - skill: japanese
+    weight: 4
+  - skill: chinese
+    weight: 3
+  - skill: project management
+    weight: 2
+  - skill: mba
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

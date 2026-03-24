@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Frontend Engineer PG-FE
+  must_have:
+  - skill: react
+    weight: 8
+  - skill: vue.js
+    weight: 7
+  core:
+  - skill: frontend engineer
+    weight: 5
+  - skill: typescript
+    weight: 5
+  - skill: javascript
+    weight: 4
+  nice_to_have:
+  - skill: html
+    weight: 4
+  - skill: css
+    weight: 3
+  - skill: node.js
+    weight: 2
+  - skill: webpack
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

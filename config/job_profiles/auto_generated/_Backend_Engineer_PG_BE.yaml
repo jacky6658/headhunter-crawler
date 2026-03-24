@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Engineer PG-BE
+  must_have:
+  - skill: java
+    weight: 8
+  - skill: python
+    weight: 7
+  core:
+  - skill: backend engineer
+    weight: 5
+  - skill: go
+    weight: 5
+  - skill: node.js
+    weight: 4
+  nice_to_have:
+  - skill: spring boot
+    weight: 4
+  - skill: postgresql
+    weight: 3
+  - skill: redis
+    weight: 2
+  - skill: docker
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

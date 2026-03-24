@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Site Reliability Engineer SRE Taiwan Game
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: site reliability
+    weight: 7
+  core:
+  - skill: cloud engineer
+    weight: 5
+  - skill: devops
+    weight: 5
+  - skill: linux
+    weight: 4
+  nice_to_have:
+  - skill: aws
+    weight: 4
+  - skill: gcp
+    weight: 3
+  - skill: docker
+    weight: 2
+  - skill: kubernetes
+    weight: 2
+  - skill: python
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

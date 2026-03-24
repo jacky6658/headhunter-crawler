@@ -1,0 +1,29 @@
+job_profile:
+  role_family: engineering
+  role_name: Customer Service Restaurant Brand
+  must_have:
+  - skill: customer service
+    weight: 8
+  - skill: 客服
+    weight: 7
+  core:
+  - skill: 客戶服務
+    weight: 6
+  - skill: 餐飲客服
+    weight: 5
+  - skill: customer support
+    weight: 4
+  nice_to_have:
+  - skill: communication
+    weight: 4
+  - skill: service
+    weight: 3
+  - skill: call center
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

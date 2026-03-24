@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Site Reliability Engineer DevOps Kubernetes
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: docker
+    weight: 7
+  core:
+  - skill: kubernetes
+    weight: 6
+  nice_to_have:
+  - skill: prometheus
+    weight: 4
+  - skill: azure
+    weight: 3
+  - skill: gcp
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

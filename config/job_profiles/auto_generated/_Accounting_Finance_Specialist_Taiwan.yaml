@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Accounting Finance Specialist Taiwan
+  must_have:
+  - skill: accountant
+    weight: 8
+  - skill: accounting
+    weight: 7
+  core:
+  - skill: 財務會計
+    weight: 6
+  - skill: cpa
+    weight: 5
+  - skill: account specialist
+    weight: 5
+  nice_to_have:
+  - skill: sap
+    weight: 4
+  - skill: erp
+    weight: 3
+  - skill: excel
+    weight: 2
+  - skill: financial
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

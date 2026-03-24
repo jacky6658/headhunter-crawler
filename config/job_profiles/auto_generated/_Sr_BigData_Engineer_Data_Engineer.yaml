@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Sr BigData Engineer Data Engineer
+  must_have:
+  - skill: scala
+    weight: 8
+  - skill: hadoop
+    weight: 7
+  core:
+  - skill: spark
+    weight: 6
+  nice_to_have:
+  - skill: kafka
+    weight: 4
+  - skill: mapreduce
+    weight: 3
+  - skill: heron
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Team Lead Senior C# Engineer
+  must_have:
+  - skill: c#
+    weight: 8
+  - skill: asp.net
+    weight: 7
+  core:
+  - skill: .net
+    weight: 6
+  nice_to_have:
+  - skill: kafka
+    weight: 4
+  - skill: mongodb
+    weight: 3
+  - skill: kubernetes
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

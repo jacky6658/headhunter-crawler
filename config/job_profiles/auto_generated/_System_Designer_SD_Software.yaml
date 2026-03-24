@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: System Designer SD Software
+  must_have:
+  - skill: system analysis
+    weight: 8
+  core:
+  - skill: system designer
+    weight: 5
+  - skill: software architect
+    weight: 5
+  - skill: software engineer
+    weight: 5
+  - skill: it consultant
+    weight: 5
+  nice_to_have:
+  - skill: java
+    weight: 4
+  - skill: uml
+    weight: 3
+  - skill: system design
+    weight: 2
+  - skill: erp
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

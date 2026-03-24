@@ -93,27 +93,45 @@ async def browse_feed(page):
 async def try_save_to_pdf(page) -> bool:
     """嘗試用 LinkedIn 原生的「存為 PDF」下載（一度/非一度皆可）"""
     try:
-        # 找「更多」按鈕
-        more_btn = page.locator("button:has-text('More'), button:has-text('更多')").first
-        if await more_btn.count() == 0:
-            return False
-        await more_btn.hover()
-        await human_delay(HOVER_MIN, HOVER_MAX)
-        await more_btn.click()
-        await human_delay(0.8, 1.5)
+        # 滾到頂部確保按鈕可見
+        await page.evaluate("window.scrollTo(0, 0)")
+        await asyncio.sleep(0.5)
 
-        # 找「存為 PDF」
-        save_pdf = page.locator("text=Save to PDF, text=存為 PDF").first
-        if await save_pdf.count() == 0:
-            # 關閉選單
-            await page.keyboard.press("Escape")
+        # 用 JS 點擊 More 按鈕（避免元素遮擋問題）
+        clicked = await page.evaluate("""
+            () => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const moreBtn = buttons.find(b =>
+                    b.textContent.trim() === 'More' ||
+                    b.textContent.trim() === '更多' ||
+                    (b.getAttribute('aria-label') || '').includes('More')
+                );
+                if (moreBtn) { moreBtn.click(); return true; }
+                return false;
+            }
+        """)
+        if not clicked:
             return False
-        await save_pdf.hover()
-        await human_delay(HOVER_MIN, HOVER_MAX)
 
-        # 開始監聽下載
+        await human_delay(1.5, 2.5)
+
+        # 用 JS 找 Save to PDF + expect_download 攔截
         async with page.expect_download(timeout=15000) as download_info:
-            await save_pdf.click()
+            found = await page.evaluate("""
+                () => {
+                    const items = Array.from(document.querySelectorAll('li, div, span, a'));
+                    const saveItem = items.find(el =>
+                        el.textContent.trim() === '存為 PDF' ||
+                        el.textContent.trim() === 'Save to PDF'
+                    );
+                    if (saveItem) { saveItem.click(); return true; }
+                    return false;
+                }
+            """)
+            if not found:
+                await page.keyboard.press("Escape")
+                return False
+
         download = await download_info.value
         return download
     except Exception:

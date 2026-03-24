@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Developer Game
+  must_have:
+  - skill: go
+    weight: 8
+  - skill: java
+    weight: 7
+  core:
+  - skill: backend developer
+    weight: 5
+  - skill: node.js
+    weight: 5
+  - skill: game backend
+    weight: 4
+  nice_to_have:
+  - skill: redis
+    weight: 4
+  - skill: mysql
+    weight: 3
+  - skill: docker
+    weight: 2
+  - skill: distributed system
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

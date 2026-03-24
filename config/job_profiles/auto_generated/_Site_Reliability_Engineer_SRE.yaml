@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Site Reliability Engineer SRE
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: kubernetes
+    weight: 7
+  core:
+  - skill: site reliability engineer
+    weight: 5
+  - skill: devops
+    weight: 5
+  - skill: go
+    weight: 4
+  nice_to_have:
+  - skill: terraform
+    weight: 4
+  - skill: prometheus
+    weight: 3
+  - skill: aws
+    weight: 2
+  - skill: linux
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Senior Backend Engineer
+  must_have:
+  - skill: go
+    weight: 8
+  - skill: python
+    weight: 7
+  core:
+  - skill: senior backend engineer
+    weight: 5
+  - skill: java
+    weight: 5
+  - skill: distributed systems
+    weight: 4
+  nice_to_have:
+  - skill: kubernetes
+    weight: 4
+  - skill: aws
+    weight: 3
+  - skill: postgresql
+    weight: 2
+  - skill: redis
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,0 +1,30 @@
+job_profile:
+  role_family: engineering
+  role_name: Executive Assistant Japan CEO
+  must_have:
+  - skill: executive assistant
+    weight: 8
+  - skill: ceo assistant
+    weight: 7
+  core:
+  - skill: special assistant
+    weight: 6
+  - skill: 特別助理
+    weight: 5
+  - skill: 秘書
+    weight: 4
+  nice_to_have:
+  - skill: japanese
+    weight: 4
+  - skill: business chinese
+    weight: 3
+  - skill: project management
+    weight: 2
+  - skill: bilingual
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

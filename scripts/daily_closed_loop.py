@@ -37,6 +37,19 @@ except ImportError:
     sys.exit(1)
 
 # ──────────────────────────────────────────
+# 自動載入 .env
+# ──────────────────────────────────────────
+SCRIPT_DIR = Path(__file__).parent
+_env_file = SCRIPT_DIR.parent / ".env"
+if _env_file.exists():
+    with open(_env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+
+# ──────────────────────────────────────────
 # 設定
 # ──────────────────────────────────────────
 API_BASE = os.environ.get("API_BASE", "https://api-hr.step1ne.com")
@@ -129,16 +142,22 @@ def is_job_locked(job_id: int) -> bool:
 
 def lock_job(job_id: int):
     """鎖定職缺"""
-    api_put(f"/api/system-config/crawl_lock_{job_id}", {
-        "value": f"{today_str}|{OPERATOR}|started"
-    })
+    try:
+        api_put(f"/api/system-config/crawl_lock_{job_id}", {
+            "value": f"{today_str}|{OPERATOR}|started"
+        })
+    except Exception as e:
+        log.warning(f"  Lock failed (non-blocking): {e}")
 
 
 def unlock_job(job_id: int, result: str):
     """更新鎖定結果"""
-    api_put(f"/api/system-config/crawl_lock_{job_id}", {
-        "value": f"{today_str}|{OPERATOR}|{result}"
-    })
+    try:
+        api_put(f"/api/system-config/crawl_lock_{job_id}", {
+            "value": f"{today_str}|{OPERATOR}|{result}"
+        })
+    except Exception as e:
+        log.warning(f"  Unlock failed (non-blocking): {e}")
 
 
 def get_checkpoint() -> dict:
@@ -152,9 +171,12 @@ def get_checkpoint() -> dict:
 
 def save_checkpoint(data: dict):
     """儲存 checkpoint"""
-    api_put(f"/api/system-config/crawl_checkpoint_{today_str}", {
-        "value": json.dumps(data, ensure_ascii=False)
-    })
+    try:
+        api_put(f"/api/system-config/crawl_checkpoint_{today_str}", {
+            "value": json.dumps(data, ensure_ascii=False)
+        })
+    except Exception as e:
+        log.warning(f"  Checkpoint save failed (non-blocking): {e}")
 
 
 # ──────────────────────────────────────────
@@ -172,7 +194,7 @@ def get_active_jobs() -> list:
 
     high = [j for j in active if (j.get("priority") or "").lower() == "high"]
     if high:
-        log.info(f"  Priority HIGH: {len(high)} jobs ({', '.join(f'#{j[\"id\"]}' for j in high)})")
+        log.info(f"  Priority HIGH: {len(high)} jobs ({', '.join(str(j.get('id')) for j in high)})")
 
     return active
 
@@ -192,7 +214,7 @@ def create_crawler_task(job: dict) -> str | None:
         "location_zh": "台灣",
         "step1ne_job_id": job["id"],
         "auto_push": False,
-        "pages": 3,
+        "pages": 10,
         "schedule_type": "once"
     }
 
@@ -211,7 +233,11 @@ def wait_for_task(task_id: str) -> bool:
     start = time.time()
     while time.time() - start < POLL_TIMEOUT:
         try:
-            r = crawler_get(f"/api/tasks/{task_id}")
+            # 先試 /tasks/{id}/status（本地爬蟲），再試 /tasks/{id}（遠端）
+            try:
+                r = crawler_get(f"/api/tasks/{task_id}/status")
+            except Exception:
+                r = crawler_get(f"/api/tasks/{task_id}")
             status = r.get("status", "")
             if status == "completed":
                 log.info(f"  Crawler task completed")
@@ -228,57 +254,276 @@ def wait_for_task(task_id: str) -> bool:
 
 
 def get_task_results(task_id: str) -> list:
-    """取得爬蟲搜尋結果"""
+    """取得爬蟲搜尋結果（相容遠端和本地爬蟲）"""
     try:
+        # 先試遠端格式 /api/results/{id}
         r = crawler_get(f"/api/results/{task_id}")
         candidates = r if isinstance(r, list) else r.get("candidates", r.get("results", []))
         log.info(f"  Search results: {len(candidates)} candidates")
+        return candidates
+    except Exception:
+        pass
+
+    try:
+        # 本地爬蟲格式 /api/candidates?task_id={id}
+        r = crawler_get(f"/api/candidates?task_id={task_id}&limit=500")
+        candidates = r.get("data", []) if isinstance(r, dict) else r
+        log.info(f"  Search results (local): {len(candidates)} candidates")
         return candidates
     except Exception as e:
         log.error(f"  Failed to get results: {e}")
         return []
 
 
+def dedup_candidates(candidates: list) -> list:
+    """
+    去重：用 linkedin_url 和 github_url 去重，同一人只保留第一筆。
+    也呼叫 HR API 檢查是否已匯入過。
+    """
+    seen_urls = set()
+    unique = []
+    dup_count = 0
+
+    for c in candidates:
+        # 用 linkedin_url 或 github_url 做 key
+        li = (c.get("linkedin_url") or c.get("profileUrl") or "").strip().lower().rstrip("/")
+        gh = (c.get("github_url") or "").strip().lower().rstrip("/")
+        name = (c.get("name") or "").strip().lower()
+
+        # URL 去重
+        dup = False
+        if li and li in seen_urls:
+            dup = True
+        if gh and gh in seen_urls:
+            dup = True
+        if not li and not gh and name and name in seen_urls:
+            dup = True
+
+        if dup:
+            dup_count += 1
+            continue
+
+        if li: seen_urls.add(li)
+        if gh: seen_urls.add(gh)
+        if name: seen_urls.add(name)
+
+        unique.append(c)
+
+    # 檢查 HR 系統是否已存在
+    existing_count = 0
+    final = []
+    for c in unique:
+        name = c.get("name", "")
+        try:
+            r = api_get(f"/api/crawler/import-status?name={name}")
+            if r.get("exists"):
+                existing_count += 1
+                continue
+        except Exception:
+            pass  # API 錯誤就放過，不因此擋住
+        final.append(c)
+
+    log.info(f"  Dedup: {len(candidates)} → {len(unique)} (removed {dup_count} duplicates, {existing_count} already in system) → {len(final)} new")
+    return final
+
+
 def a_layer_filter(candidates: list, job: dict) -> list:
-    """A 層硬性條件篩選（規則式）"""
+    """
+    A 層硬性條件篩選（嚴格版 v2 — 2026-03-24）
+
+    問題修正：
+    - 80% 職能不符（Phoebe 反饋）→ 收緊職稱匹配
+    - 重複人選過多 → 在 dedup 處理
+    - 年資區間不明確 → 加上薪資推估上限
+    - 技能 substring 匹配太寬 → 改用 word boundary
+
+    篩選項目：
+    1. 排除關鍵字
+    2. 職稱必須跟職缺直接相關（嚴格匹配，沒設 title_variants 時從 key_skills 推斷）
+    3. 核心技能至少命中 2 個（word boundary 匹配）
+    4. 年資上下限（從薪資推估上限）
+    5. 地區（預設北部，除非職缺標遠端）
+    """
+    import re
+
     rejection = (job.get("rejection_criteria") or "").lower()
     exclusion = [kw.strip().lower() for kw in (job.get("exclusion_keywords") or "").split(",") if kw.strip()]
     title_variants = [t.strip().lower() for t in (job.get("title_variants") or "").split(",") if t.strip()]
     key_skills = [s.strip().lower() for s in (job.get("key_skills") or "").split(",") if s.strip()]
+    job_title = (job.get("title") or job.get("job_title") or "").lower()
+    submission = (job.get("submission_criteria") or "").lower()
+
+    # 如果沒有 title_variants，從職缺名稱和 key_skills 自動生成
+    if not title_variants and job_title:
+        # 從職缺名稱提取核心角色詞
+        role_keywords = []
+        role_patterns = [
+            "engineer", "developer", "architect", "manager", "designer",
+            "analyst", "scientist", "consultant", "lead", "director",
+            "工程師", "開發", "架構師", "經理", "設計師", "分析師", "顧問"
+        ]
+        for rp in role_patterns:
+            if rp in job_title:
+                role_keywords.append(rp)
+        # 加上職缺名稱本身的關鍵詞
+        for word in job_title.replace("-", " ").replace("—", " ").split():
+            if len(word) > 2 and word not in ["the", "and", "for", "with"]:
+                role_keywords.append(word)
+        title_variants = role_keywords
+
+    # 年資（從職缺讀取 + 薪資推估上限）
+    exp_required = job.get("experience_required", "")
+    salary_range = job.get("salary_range", "")
+    min_years = 0
+    max_years = 99
+
+    if exp_required:
+        exp_str = str(exp_required).lower()
+        range_match = re.search(r'(\d+)\s*[-~到]\s*(\d+)', exp_str)
+        min_match = re.search(r'(\d+)\s*[+年以上]', exp_str)
+        if range_match:
+            min_years = int(range_match.group(1))
+            max_years = int(range_match.group(2))
+        elif min_match:
+            min_years = int(min_match.group(1))
+
+    # 沒有明確上限時，從薪資推估
+    if max_years == 99 and salary_range:
+        salary_str = str(salary_range).replace(",", "").replace("，", "")
+        salary_nums = re.findall(r'(\d+)', salary_str)
+        if salary_nums:
+            # 取最大的數字當年薪（萬）
+            max_salary = max(int(n) for n in salary_nums)
+            # 月薪轉年薪
+            if max_salary < 300:
+                max_salary = max_salary  # 已經是萬/年
+            if max_salary < 80:
+                max_years = min_years + 5  # Junior-Mid
+            elif max_salary < 120:
+                max_years = min_years + 8  # Mid-Senior
+            elif max_salary < 180:
+                max_years = min_years + 12  # Senior-Staff
+            # > 180 萬不設上限
+
+    # 沒有薪資資訊時，用 min_years * 3 做保守上限
+    if max_years == 99 and min_years > 0:
+        max_years = min_years * 3
+
+    log.info(f"  A-layer config: min_years={min_years}, max_years={max_years}, title_variants={title_variants[:5]}, key_skills(top5)={key_skills[:5]}")
+
+    # 地區（預設北部）
+    job_location = (job.get("location") or "").lower()
+    is_remote = any(kw in job_location for kw in ["遠端", "remote", "不限"])
+    north_keywords = ["台北", "taipei", "新北", "new taipei", "桃園", "taoyuan", "新竹", "hsinchu", "北部"]
+    # 不再把 "taiwan" 當北部，太寬了
 
     passed = []
     rejected = 0
+    reject_reasons = {"title": 0, "skill": 0, "exp": 0, "location": 0, "exclusion": 0, "no_info": 0}
+
+    # 不相關的職稱黑名單（跟工程職缺無關的角色）
+    irrelevant_titles = [
+        "recruiter", "hr ", "human resource", "sales", "marketing", "account manager",
+        "business develop", "bd ", "legal", "lawyer", "finance manager", "cfo",
+        "行銷", "業務", "人資", "法務", "會計", "財務長", "公關",
+        "journalist", "reporter", "editor", "writer", "記者", "編輯",
+        "teacher", "professor", "教師", "教授",
+        "investor", "venture", "投資",
+    ]
 
     for c in candidates:
         name = c.get("name", "")
-        title = (c.get("title") or c.get("current_title") or "").lower()
+        title = (c.get("title") or c.get("current_title") or c.get("headline", "")).lower()
         snippet = (c.get("snippet") or c.get("summary") or "").lower()
-        full_text = f"{title} {snippet} {c.get('skills', '')}".lower()
+        skills_str = (c.get("skills") or "").lower()
+        full_text = f"{title} {snippet} {skills_str}"
+        location = (c.get("location") or "").lower()
 
-        # 排除關鍵字
+        # 1. 排除關鍵字
         if any(kw in full_text for kw in exclusion if kw):
             rejected += 1
+            reject_reasons["exclusion"] += 1
             continue
 
-        # 職稱相關性（寬鬆：有任一 variant 相關即可）
-        if title_variants:
-            title_match = any(v in title or v in snippet for v in title_variants)
-            if not title_match:
-                # 寬鬆：資訊不足就通過
-                if title:
+        # 2. 職稱匹配（嚴格版）
+        if title:
+            # 2a. 先用黑名單排除明顯不相關的職稱
+            if any(irr in title for irr in irrelevant_titles):
+                rejected += 1
+                reject_reasons["title"] += 1
+                continue
+
+            # 2b. 如果有 title_variants，必須匹配至少一個
+            if title_variants:
+                title_match = any(v in title for v in title_variants)
+                if not title_match:
+                    # 額外檢查：title 裡有沒有 key_skills 的技術關鍵字（可能是不同職稱但做同領域）
+                    tech_in_title = any(s in title for s in key_skills[:5]) if key_skills else False
+                    if not tech_in_title:
+                        rejected += 1
+                        reject_reasons["title"] += 1
+                        continue
+
+        # 3. 核心技能至少命中 2 個（用 word boundary 避免 java/javascript 混淆）
+        if key_skills:
+            matched_skills = 0
+            for skill in key_skills:
+                # 用 word boundary 匹配（避免 java 匹配 javascript）
+                pattern = r'\b' + re.escape(skill) + r'\b'
+                if re.search(pattern, full_text):
+                    matched_skills += 1
+                elif len(skill) >= 3 and skill in full_text:
+                    # 短技能（如 sql, c#）用 substring 也算
+                    matched_skills += 0.5
+
+            required_matches = min(2, len(key_skills))
+            if matched_skills < required_matches:
+                # 資訊不足（沒有 skills 和 snippet）時降低門檻到 1
+                if not skills_str.strip() and not snippet.strip():
+                    if matched_skills < 1:
+                        rejected += 1
+                        reject_reasons["skill"] += 1
+                        continue
+                else:
                     rejected += 1
+                    reject_reasons["skill"] += 1
                     continue
 
-        # 技能交集（完全無交集才淘汰）
-        if key_skills:
-            skill_match = any(s in full_text for s in key_skills[:3])
-            if not skill_match and snippet:
+        # 4. 年資檢查（有上限）
+        if min_years > 0:
+            exp_years = c.get("experience_years") or c.get("years_experience")
+            if exp_years is not None:
+                try:
+                    years = float(str(exp_years).replace("年", "").replace("+", "").strip())
+                    if years < min_years:
+                        rejected += 1
+                        reject_reasons["exp"] += 1
+                        continue
+                    if max_years < 99 and years > max_years + 3:
+                        rejected += 1
+                        reject_reasons["exp"] += 1
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+        # 5. 地區篩選（非遠端職缺才檢查，移除 taiwan 避免太寬）
+        if not is_remote and location:
+            # 只有明確不在北部才淘汰（海外、中南部）
+            south_keywords = ["高雄", "kaohsiung", "台南", "tainan", "台中", "taichung", "屏東", "嘉義"]
+            overseas_keywords = ["california", "seattle", "new york", "tokyo", "singapore", "london",
+                                "san francisco", "boston", "美國", "日本", "新加坡", "英國"]
+            in_south = any(kw in location for kw in south_keywords)
+            in_overseas = any(kw in location for kw in overseas_keywords)
+            if in_south or in_overseas:
                 rejected += 1
+                reject_reasons["location"] += 1
                 continue
 
         passed.append(c)
 
-    log.info(f"  A-layer: {len(passed)} passed, {rejected} rejected (rate: {len(passed)}/{len(candidates)}={len(passed)*100//max(len(candidates),1)}%)")
+    total = len(candidates)
+    log.info(f"  A-layer: {len(passed)} passed, {rejected} rejected out of {total} ({len(passed)*100//max(total,1)}% pass rate)")
+    log.info(f"  Reject breakdown: title={reject_reasons['title']}, skill={reject_reasons['skill']}, exp={reject_reasons['exp']}, location={reject_reasons['location']}, exclusion={reject_reasons['exclusion']}")
     return passed
 
 
@@ -355,24 +600,43 @@ async def download():
         await page.evaluate("window.scrollTo(0, 0)")
         await asyncio.sleep(0.5)
 
-        # 嘗試方式 A：原生 Save to PDF
+        # 嘗試方式 A：用 JS click() 繞過 LinkedIn 商務浮層
         pdf_saved = False
         try:
-            more_btn = page.locator("button:has-text('More'), button:has-text('更多')").first
-            if await more_btn.count() > 0:
-                await more_btn.hover()
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-                await more_btn.click()
-                await asyncio.sleep(1)
-                save_btn = page.locator("text=Save to PDF, text=存為 PDF").first
-                if await save_btn.count() > 0:
-                    async with page.expect_download(timeout=15000) as dl:
-                        await save_btn.click()
-                    download = await dl.value
-                    await download.save_as("{pdf_path}")
-                    pdf_saved = True
-                else:
-                    await page.keyboard.press("Escape")
+            # JS 直接點擊 More 按鈕（避免 Playwright hover 被商務浮層攔截）
+            clicked_more = await page.evaluate(\"\"\"
+                () => {{
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const moreBtn = buttons.find(b =>
+                        b.textContent.trim() === 'More' ||
+                        b.textContent.trim() === '更多' ||
+                        (b.getAttribute('aria-label') || '').includes('More')
+                    );
+                    if (moreBtn) {{ moreBtn.click(); return true; }}
+                    return false;
+                }}
+            \"\"\")
+            if clicked_more:
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+                # JS 找 Save to PDF 並點擊 + expect_download 攔截
+                async with page.expect_download(timeout=15000) as dl:
+                    found_save = await page.evaluate(\"\"\"
+                        () => {{
+                            const items = Array.from(document.querySelectorAll('li, div, span, a'));
+                            const saveItem = items.find(el =>
+                                el.textContent.trim() === '存為 PDF' ||
+                                el.textContent.trim() === 'Save to PDF'
+                            );
+                            if (saveItem) {{ saveItem.click(); return true; }}
+                            return false;
+                        }}
+                    \"\"\")
+                    if not found_save:
+                        await page.keyboard.press("Escape")
+                        raise Exception("Save to PDF not found")
+                download = await dl.value
+                await download.save_as("{pdf_path}")
+                pdf_saved = True
         except Exception:
             pass
 
@@ -745,6 +1009,9 @@ def main():
                 completed_jobs.add(job_id)
                 save_checkpoint({"completed_jobs": list(completed_jobs), "operator": OPERATOR})
                 continue
+
+            # Step 3.5: 去重（URL + 已匯入檢查）
+            results = dedup_candidates(results)
 
             # Step 4: A 層篩選
             passed = a_layer_filter(results, job)

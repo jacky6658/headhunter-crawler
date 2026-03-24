@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Product Manager PM
+  must_have:
+  - skill: pm
+    weight: 8
+  - skill: product owner
+    weight: 7
+  core:
+  - skill: product manager
+    weight: 5
+  - skill: tech pm
+    weight: 5
+  - skill: growth product
+    weight: 4
+  nice_to_have:
+  - skill: agile
+    weight: 4
+  - skill: scrum
+    weight: 3
+  - skill: data analysis
+    weight: 2
+  - skill: user research
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

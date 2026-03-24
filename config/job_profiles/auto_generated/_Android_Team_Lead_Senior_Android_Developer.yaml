@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Android Team Lead Senior Android Developer
+  must_have:
+  - skill: kotlin
+    weight: 8
+  - skill: mvvm
+    weight: 7
+  core:
+  - skill: android
+    weight: 6
+  nice_to_have:
+  - skill: coroutine
+    weight: 4
+  - skill: unit test
+    weight: 3
+  - skill: scrum
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

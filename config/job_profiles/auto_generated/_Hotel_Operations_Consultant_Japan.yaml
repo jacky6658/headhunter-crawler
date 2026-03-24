@@ -1,0 +1,30 @@
+job_profile:
+  role_family: engineering
+  role_name: Hotel Operations Consultant Japan
+  must_have:
+  - skill: hotel operations
+    weight: 8
+  - skill: ホテル運営
+    weight: 7
+  core:
+  - skill: hospitality consultant
+    weight: 5
+  - skill: operations manager
+    weight: 5
+  - skill: 旅館コンサルタント
+    weight: 4
+  nice_to_have:
+  - skill: revenue management
+    weight: 4
+  - skill: hotel management
+    weight: 3
+  - skill: hospitality
+    weight: 2
+  - skill: japanese
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: Data Center Operations Engineer
+  must_have:
+  - skill: system administrator
+    weight: 8
+  - skill: it operations
+    weight: 7
+  core:
+  - skill: data center engineer
+    weight: 5
+  - skill: network engineer
+    weight: 5
+  - skill: linux admin
+    weight: 5
+  nice_to_have:
+  - skill: cisco
+    weight: 4
+  - skill: vmware
+    weight: 3
+  - skill: storage
+    weight: 2
+  - skill: monitoring
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

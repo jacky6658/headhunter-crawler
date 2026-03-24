@@ -1,0 +1,31 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE System Operations Engineer
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: system operations
+    weight: 7
+  core:
+  - skill: devops engineer
+    weight: 5
+  - skill: linux admin
+    weight: 5
+  - skill: network engineer
+    weight: 5
+  nice_to_have:
+  - skill: docker
+    weight: 4
+  - skill: kubernetes
+    weight: 3
+  - skill: ci/cd
+    weight: 2
+  - skill: shell script
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

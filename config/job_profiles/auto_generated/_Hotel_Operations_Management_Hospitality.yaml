@@ -1,0 +1,30 @@
+job_profile:
+  role_family: engineering
+  role_name: Hotel Operations Management Hospitality
+  must_have:
+  - skill: hospitality
+    weight: 8
+  - skill: 旅館管理
+    weight: 7
+  core:
+  - skill: hotel manager
+    weight: 5
+  - skill: operations manager
+    weight: 5
+  - skill: 飯店運営
+    weight: 4
+  nice_to_have:
+  - skill: revenue
+    weight: 4
+  - skill: hotel brand
+    weight: 3
+  - skill: tourism
+    weight: 2
+  - skill: japanese
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

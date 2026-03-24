@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Data Engineer Generative AI Pipelines
+  must_have:
+  - skill: ai pipeline
+    weight: 8
+  - skill: python
+    weight: 7
+  core:
+  - skill: data engineer
+    weight: 5
+  - skill: spark
+    weight: 5
+  - skill: generative ai
+    weight: 4
+  nice_to_have:
+  - skill: airflow
+    weight: 4
+  - skill: bigquery
+    weight: 3
+  - skill: kafka
+    weight: 2
+  - skill: dbt
+    weight: 2
+  - skill: llm
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

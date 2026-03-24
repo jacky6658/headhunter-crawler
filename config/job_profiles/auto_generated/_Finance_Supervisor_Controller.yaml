@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Finance Supervisor Controller
+  must_have:
+  - skill: controller
+    weight: 8
+  - skill: cfo
+    weight: 7
+  core:
+  - skill: finance manager
+    weight: 5
+  - skill: finance supervisor
+    weight: 5
+  - skill: financial planning
+    weight: 4
+  nice_to_have:
+  - skill: ifrs
+    weight: 4
+  - skill: audit
+    weight: 3
+  - skill: erp
+    weight: 2
+  - skill: sap
+    weight: 2
+  - skill: consolidation
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

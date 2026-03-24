@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Accountant Accounting
+  must_have:
+  - skill: accountant
+    weight: 8
+  - skill: finance
+    weight: 7
+  core:
+  - skill: cpa
+    weight: 6
+  - skill: accounting specialist
+    weight: 5
+  - skill: financial reporting
+    weight: 4
+  nice_to_have:
+  - skill: erp
+    weight: 4
+  - skill: excel
+    weight: 3
+  - skill: sap
+    weight: 2
+  - skill: audit
+    weight: 2
+  - skill: tax
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北
