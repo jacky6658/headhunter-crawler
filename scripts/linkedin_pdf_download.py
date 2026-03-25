@@ -91,51 +91,116 @@ async def browse_feed(page):
 
 
 async def try_save_to_pdf(page) -> bool:
-    """嘗試用 LinkedIn 原生的「存為 PDF」下載（一度/非一度皆可）"""
-    try:
-        # 滾到頂部確保按鈕可見
-        await page.evaluate("window.scrollTo(0, 0)")
-        await asyncio.sleep(0.5)
+    """
+    嘗試用 LinkedIn 原生的「存為 PDF」下載（一度/非一度皆可）
 
-        # 用 JS 點擊 More 按鈕（避免元素遮擋問題）
-        clicked = await page.evaluate("""
-            () => {
-                const buttons = Array.from(document.querySelectorAll('button'));
-                const moreBtn = buttons.find(b =>
-                    b.textContent.trim() === 'More' ||
-                    b.textContent.trim() === '更多' ||
-                    (b.getAttribute('aria-label') || '').includes('More')
-                );
-                if (moreBtn) { moreBtn.click(); return true; }
-                return false;
-            }
-        """)
-        if not clicked:
-            return False
+    修復 2026-03-25：
+    - More 按鈕選擇器擴充（aria-label, class, id 多種匹配）
+    - Save to PDF 選擇器擴充（多語言 + dropdown item 匹配）
+    - 加入重試機制（最多 3 次）
+    - 加入 debug log
+    """
+    for attempt in range(3):
+        try:
+            # 滾到頂部確保按鈕可見
+            await page.evaluate("window.scrollTo(0, 0)")
+            await asyncio.sleep(1)
 
-        await human_delay(1.5, 2.5)
-
-        # 用 JS 找 Save to PDF + expect_download 攔截
-        async with page.expect_download(timeout=15000) as download_info:
-            found = await page.evaluate("""
+            # Step 1：找到並點擊 More 按鈕
+            # 2026-03-25 實測：LinkedIn 按鈕沒有 aria-label，要用 textContent 匹配
+            clicked = await page.evaluate("""
                 () => {
-                    const items = Array.from(document.querySelectorAll('li, div, span, a'));
-                    const saveItem = items.find(el =>
-                        el.textContent.trim() === '存為 PDF' ||
-                        el.textContent.trim() === 'Save to PDF'
-                    );
-                    if (saveItem) { saveItem.click(); return true; }
+                    const btns = Array.from(document.querySelectorAll('button'));
+
+                    // 最可靠：直接用 textContent 匹配（實測通過）
+                    let btn = btns.find(b => b.textContent.trim() === '更多' || b.textContent.trim() === 'More');
+
+                    // 備援：aria-label
+                    if (!btn) btn = btns.find(b => {
+                        const aria = b.getAttribute('aria-label') || '';
+                        return aria.includes('More actions') || aria.includes('更多操作') || aria.includes('更多');
+                    });
+
+                    // 備援：class
+                    if (!btn) btn = document.querySelector('.pvs-overflow-actions-dropdown__trigger');
+
+                    if (btn) {
+                        btn.scrollIntoView({block: 'center'});
+                        btn.click();
+                        return 'found: ' + (btn.getAttribute('aria-label') || btn.textContent.trim()).substring(0, 50);
+                    }
                     return false;
                 }
             """)
-            if not found:
-                await page.keyboard.press("Escape")
-                return False
 
-        download = await download_info.value
-        return download
-    except Exception:
-        return False
+            if not clicked:
+                print(f"    [attempt {attempt+1}] More button not found, scrolling up and retrying...")
+                await page.evaluate("window.scrollTo(0, 0)")
+                await asyncio.sleep(2)
+                continue
+
+            print(f"    [attempt {attempt+1}] Clicked More: {clicked}")
+            await human_delay(1.5, 3.0)
+
+            # Step 2：找到 Save to PDF 並用 expect_download 攔截
+            try:
+                async with page.expect_download(timeout=20000) as download_info:
+                    # 2026-03-25 實測通過的選擇器
+                    found = await page.evaluate("""
+                        () => {
+                            const selectors = [
+                                'div[class*="dropdown"] li',
+                                '[role="menu"] li',
+                                '[role="menuitem"]',
+                                '.artdeco-dropdown__content li',
+                                '.artdeco-dropdown__content-inner li'
+                            ];
+
+                            for (const sel of selectors) {
+                                const items = document.querySelectorAll(sel);
+                                for (const el of items) {
+                                    const text = el.textContent.trim();
+                                    if (text === '存為 PDF' || text === 'Save to PDF' ||
+                                        text === '儲存為 PDF' || text === '另存為PDF' ||
+                                        text.includes('Save to PDF') || text.includes('存為 PDF')) {
+                                        el.click();
+                                        return 'clicked: ' + text.substring(0, 30);
+                                    }
+                                }
+                            }
+                            return false;
+                        }
+                    """)
+
+                    if not found:
+                        print(f"    [attempt {attempt+1}] 'Save to PDF' not in dropdown, dumping menu items...")
+                        # Debug：列出 dropdown 裡有什麼
+                        items = await page.evaluate("""
+                            () => {
+                                const items = document.querySelectorAll('.artdeco-dropdown__content li, [role="menuitem"]');
+                                return Array.from(items).map(el => el.textContent.trim()).filter(t => t.length > 0).slice(0, 10);
+                            }
+                        """)
+                        print(f"    Menu items: {items}")
+                        await page.keyboard.press("Escape")
+                        continue
+
+                    print(f"    [attempt {attempt+1}] {found}")
+
+                download = await download_info.value
+                return download
+
+            except Exception as e:
+                print(f"    [attempt {attempt+1}] Download timeout or error: {str(e)[:80]}")
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(1)
+                continue
+
+        except Exception as e:
+            print(f"    [attempt {attempt+1}] Error: {str(e)[:80]}")
+            continue
+
+    return False
 
 
 async def download_pdf(page, candidate_id: int, name: str, url: str) -> str | None:
@@ -149,20 +214,16 @@ async def download_pdf(page, candidate_id: int, name: str, url: str) -> str | No
     # 閱讀模擬
     await simulate_reading(page)
 
-    # 嘗試方式 A：原生下載
+    # 用 LinkedIn 原生「存為 PDF」下載（不用 page.pdf()，那個只是截圖）
     download = await try_save_to_pdf(page)
     if download and download is not True:
         await download.save_as(str(pdf_path))
-        print(f"  [pdf] Native download saved: {pdf_path.name}")
+        file_size = os.path.getsize(str(pdf_path))
+        print(f"  [pdf] ✅ LinkedIn PDF saved: {pdf_path.name} ({file_size//1024}KB)")
     else:
-        # 方式 B：page.pdf() 列印備援
-        print(f"  [pdf] No 'Save to PDF' button, using page.pdf() fallback")
-        try:
-            await page.pdf(path=str(pdf_path), format="A4", print_background=True)
-            print(f"  [pdf] Print-to-PDF saved: {pdf_path.name}")
-        except Exception as e:
-            print(f"  [pdf] FAILED: {e}")
-            return None
+        # page.pdf() 已廢棄 — 只會產生網頁截圖，不是履歷
+        print(f"  [pdf] ❌ FAILED: LinkedIn 'Save to PDF' button not found (不用 page.pdf fallback)")
+        return None
 
     # 備份
     backup_path = BACKUP_DIR / pdf_path.name
