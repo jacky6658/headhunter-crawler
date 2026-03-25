@@ -66,6 +66,21 @@ def load_config():
     if os.environ.get('GITHUB_TOKENS'):
         api_keys['github_tokens'] = [t.strip() for t in os.environ['GITHUB_TOKENS'].split(',') if t.strip()]
 
+    # ── 環境變數覆蓋 Step1ne / Telegram 金鑰 ──
+    step1ne = config.setdefault('step1ne', {})
+    if os.environ.get('API_SECRET_KEY'):
+        step1ne['api_key'] = os.environ['API_SECRET_KEY']
+    if os.environ.get('API_BASE'):
+        step1ne['api_base_url'] = os.environ['API_BASE']
+
+    tg = config.setdefault('telegram', {})
+    if os.environ.get('TG_BOT_TOKEN'):
+        tg['bot_token'] = os.environ['TG_BOT_TOKEN']
+    if os.environ.get('TG_CHAT_ID'):
+        tg['chat_id'] = os.environ['TG_CHAT_ID']
+    if os.environ.get('TG_THREAD_ID'):
+        tg['thread_id'] = os.environ['TG_THREAD_ID']
+
     return config
 
 

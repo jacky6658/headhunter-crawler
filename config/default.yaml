@@ -4,22 +4,28 @@ anti_detect:
     max_wait: 120.0
     multiplier: 2.0
   candidate_delay:
-    max: 20.0
-    min: 10.0
+    max: 45.0
+    min: 15.0
   github_delay:
     max: 0.8
     min: 0.3
   page_delay:
-    max: 6.0
+    max: 12.0
     min: 3.0
   proxy:
     enabled: false
   request_delay:
-    max: 5
+    max: 8
     min: 2
+  batch:
+    size_min: 3
+    size_max: 7
+    break_min: 180.0
+    break_max: 420.0
   ssl_verify: true
 api_keys:
-  brave_api_key: BSAGYPKNGT7tKInGsjI9EQxO9AkHBls
+  # 金鑰優先從 .env 讀取（app.py 會覆蓋）
+  brave_api_key: ''
   github_tokens: []
   perplexity_api_key: ''
 captcha:
@@ -151,10 +157,12 @@ server:
   port: 5001
 step1ne:
   api_base_url: https://api-hr.step1ne.com
-  api_key: PotfZ42-qPyY4uqSwqstpxllQB1alxVfjJsm3Mgp3HQ
+  # api_key 從 .env API_SECRET_KEY 讀取
+  api_key: ''
   auto_push: false
 telegram:
-  bot_token: 8375770979:AAFuC3emSd05sjRxSyxpP6kTmd7LyKpA2cg
+  # bot_token 從 .env TG_BOT_TOKEN 讀取
+  bot_token: ''
   chat_id: '-1003231629634'
   enabled: true
   thread_id: '1247'
