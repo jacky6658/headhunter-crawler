@@ -32,11 +32,30 @@
 
 | 時間 | 誰 | 做什麼 |
 |------|-----|--------|
-| 09:00 | hr-yuqi | Phase A — 搜尋+篩選+匯入 |
+| 06:00 | hr-yuqi | Phase A — 搜尋+篩選+匯入 |
 | Phase A 完成後 | hr-yuqi | Phase B — LinkedIn PDF 下載 |
 | Phase B 完成後 | hr-yuqi | Phase C — AI 分析 + 寫入 |
 | Phase C 完成後 | hr-yuqi | 執行 notify_consultant.py 通知群組 |
 | 12:00 / 16:00 | mty-yuqi | 品質監控 — 檢查缺 PDF 補漏 |
+
+## Phase C 分數規則
+
+| 分數 | 動作 |
+|------|------|
+| >= 60 | 完整 AI 分析 + must_ask 10 題 + 通知 TG 群組 |
+| 30-59 | AI 分析，不產生 must_ask，不通知 |
+| < 30 | 基本分析，放人才庫 |
+
+## 智慧職缺重配（Phase C）
+
+如果候選人跟原始職缺 score < 40：
+1. 自動掃全部 22 個招募中職缺
+2. 用 key_skills + title + experience 比對
+3. 找到 score >= 60 的就改 target_job_id
+4. 找到多個就挑最高分的
+5. 全部 < 40 才放人才庫
+
+例：搜 Java Developer 進來一個 BD → 原職缺 score 15 → 自動匹配到 #238 BD主管 score 72 → 改 target_job_id + 通知顧問
 
 ## 通知規則
 
