@@ -85,9 +85,46 @@
     "overall_pushability": "高 | 中 | 低",
     "pushability_detail": "目前在職但對新創有興趣",
     "fallback_note": "若此職缺不合適，可推薦職缺 #58"
+  },
+
+  "phone_scripts": {
+    "must_ask": [
+      {"question": "目前薪資結構（月薪+年終+股票）？期望薪資？", "purpose": "薪資匹配", "is_veto": true},
+      {"question": "為什麼考慮離開現職？主要動機是什麼？", "purpose": "穩定性判斷", "is_veto": false},
+      {"question": "目前有在看其他機會嗎？有拿到 offer 嗎？", "purpose": "競爭 offer", "is_veto": false},
+      {"question": "最快什麼時候可以到職？", "purpose": "到職時間", "is_veto": true},
+      {"question": "對這個職缺最感興趣的是什麼？有什麼疑慮？", "purpose": "文化適配", "is_veto": false},
+      {"question": "過去最大的技術挑戰是什麼？怎麼解決的？", "purpose": "技術驗證", "is_veto": false},
+      {"question": "履歷上 {B層缺口} 的部分能詳細說明嗎？", "purpose": "B層缺口確認", "is_veto": true},
+      {"question": "管理經驗？帶過多大的團隊？", "purpose": "角色定位", "is_veto": false},
+      {"question": "對遠端/混合/到辦公室的偏好？", "purpose": "工作模式", "is_veto": false},
+      {"question": "有什麼是你絕對不能接受的工作條件？", "purpose": "deal breaker", "is_veto": true}
+    ],
+    "opening_script": "嗨 {name}，我是 Step1ne 的獵頭顧問 {consultant}，看到你的背景在 {skill} 領域很有經驗，目前有一個 {job_title} 的機會想跟你聊聊...",
+    "closing_script": "感謝你的時間，我會把這個機會的詳細資訊發給你，有任何問題隨時聯繫我。"
   }
 }
 ```
+
+## ⛔ 強制規則（不遵守就不准送出）
+
+### must_ask 必問問題
+- **至少 10 題，不足 10 題不可送出 ai_analysis**
+- **至少 1 題 is_veto: true**（答錯就淘汰的關鍵題）
+- 題目必須涵蓋：薪資 + B層缺口 + 穩定性 + 到職時間 + 競爭 offer + 文化適配 + 技術驗證
+- 寫入前自我檢查：must_ask 共 N 題，N < 10 則補齊
+
+### 寫入前自檢清單
+送出 PUT ai-analysis 之前，逐項確認：
+- [ ] must_ask >= 10 題？
+- [ ] must_ask 至少 1 題 is_veto: true？
+- [ ] must_have >= 3 條？
+- [ ] nice_to_have >= 2 條？
+- [ ] career_curve.summary 不是只貼職稱？
+- [ ] salary_estimate 有 current_estimate 和 risks？
+- [ ] recommendation 有 fallback_note？
+
+**任一項未通過 → 不送出，先補齊。**
 
 ## 最低要求（抽查清單）
 
@@ -102,6 +139,7 @@
 | must_have | 至少 3 條，每條有 condition/actual/result |
 | nice_to_have | 至少 2 條 |
 | salary_fit | 具體分析，不是只寫「ok」 |
+| phone_scripts.must_ask | **至少 10 題，至少 1 題 is_veto: true** |
 | recommendation | overall_pushability 有理由 + fallback_note |
 
 ## result 值
