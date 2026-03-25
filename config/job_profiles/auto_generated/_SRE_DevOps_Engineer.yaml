@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE DevOps Engineer
+  must_have:
+  - skill: sre
+    weight: 8
+  - skill: devops
+    weight: 7
+  core:
+  - skill: ci/cd
+    weight: 6
+  - skill: linux
+    weight: 5
+  nice_to_have:
+  - skill: docker
+    weight: 4
+  - skill: kubernetes
+    weight: 3
+  - skill: jenkins
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

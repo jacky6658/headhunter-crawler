@@ -100,7 +100,7 @@ crawler:
   ocr_enabled: true
   sample_per_page: 5
 dedup:
-  cache_file: /Users/user/Downloads/headhunter-crawler/data/dedup_cache.json
+  cache_file: /Users/user/clawd/headhunter-crawler/data/dedup_cache.json
 enrichment:
   batch:
     concurrency: 3
@@ -135,7 +135,7 @@ enrichment:
     use_job_context: true
 google_sheets:
   batch_size: 50
-  credentials_file: /Users/user/Downloads/headhunter-crawler/credentials.json
+  credentials_file: /Users/user/clawd/headhunter-crawler/credentials.json
   processed_sheet_name: 去重
   spreadsheet_id: 15X2NNK9bSmSl-GfCmfO2q8lS2wAinR9fNMZr4vqrMug
 logging:
@@ -144,7 +144,7 @@ logging:
   level: INFO
   max_bytes: 10485760
 scheduler:
-  tasks_file: /Users/user/Downloads/headhunter-crawler/data/tasks.json
+  tasks_file: /Users/user/clawd/headhunter-crawler/data/tasks.json
 server:
   debug: false
   host: 0.0.0.0

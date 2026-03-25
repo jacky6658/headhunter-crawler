@@ -15,7 +15,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://localhost:5000/api
+  - url: http://localhost:5001/api
     description: 本地爬蟲系統
   - url: https://backendstep1ne.zeabur.app/api
     description: Step1ne 雲端系統（僅用於匯入/查詢職缺）

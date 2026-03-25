@@ -1,0 +1,29 @@
+job_profile:
+  role_family: engineering
+  role_name: SRE Kubernetes Docker Linux
+  must_have:
+  - skill: kubernetes
+    weight: 8
+  - skill: docker
+    weight: 7
+  core:
+  - skill: linux
+    weight: 6
+  - skill: devops
+    weight: 5
+  nice_to_have:
+  - skill: prometheus
+    weight: 4
+  - skill: azure
+    weight: 3
+  - skill: gcp
+    weight: 2
+  - skill: terraform
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

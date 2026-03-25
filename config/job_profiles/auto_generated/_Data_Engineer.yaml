@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: Data Engineer
+  must_have:
+  - skill: python
+    weight: 8
+  - skill: spark
+    weight: 7
+  core:
+  - skill: airflow
+    weight: 6
+  nice_to_have:
+  - skill: gcp
+    weight: 4
+  - skill: bigquery
+    weight: 3
+  - skill: etl
+    weight: 2
+  - skill: pipeline
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

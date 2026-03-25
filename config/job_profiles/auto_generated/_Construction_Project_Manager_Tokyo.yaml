@@ -1,0 +1,24 @@
+job_profile:
+  role_family: engineering
+  role_name: Construction Project Manager Tokyo
+  must_have:
+  - skill: 建築專案管理
+    weight: 8
+  - skill: 施工管理
+    weight: 7
+  core:
+  - skill: 日文
+    weight: 6
+  nice_to_have:
+  - skill: 土木工程
+    weight: 4
+  - skill: bim
+    weight: 3
+  - skill: 中日翻譯
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - japan
+    - tokyo
+    - 日本

@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Developer Java C#
+  must_have:
+  - skill: java
+    weight: 8
+  - skill: c#
+    weight: 7
+  core:
+  - skill: spring boot
+    weight: 6
+  - skill: .net core
+    weight: 5
+  nice_to_have:
+  - skill: restful api
+    weight: 4
+  - skill: sql
+    weight: 3
+  - skill: git
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

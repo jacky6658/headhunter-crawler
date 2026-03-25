@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Deputy Plant Manager
+  must_have:
+  - skill: 工廠管理
+    weight: 8
+  - skill: 生產排程
+    weight: 7
+  core:
+  - skill: 人力調度
+    weight: 6
+  nice_to_have:
+  - skill: sop建立
+    weight: 4
+  - skill: ehs
+    weight: 3
+  - skill: 設備維護
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

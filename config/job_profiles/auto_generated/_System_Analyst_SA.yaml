@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: System Analyst SA
+  must_have:
+  - skill: 需求分析
+    weight: 8
+  - skill: restful api
+    weight: 7
+  core:
+  - skill: java
+    weight: 6
+  - skill: c#
+    weight: 5
+  nice_to_have:
+  - skill: sql
+    weight: 4
+  - skill: spring boot
+    weight: 3
+  - skill: .net core
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

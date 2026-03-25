@@ -1,0 +1,23 @@
+job_profile:
+  role_family: engineering
+  role_name: Game Tester QA
+  must_have:
+  - skill: 遊戲測試
+    weight: 8
+  - skill: bug追蹤
+    weight: 7
+  core:
+  - skill: qa
+    weight: 6
+  nice_to_have:
+  - skill: fps遊戲
+    weight: 4
+  - skill: game tester
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

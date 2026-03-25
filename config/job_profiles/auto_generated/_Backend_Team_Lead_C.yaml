@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: Backend Team Lead C#
+  must_have:
+  - skill: c#
+    weight: 8
+  - skill: asp.net
+    weight: 7
+  core:
+  - skill: 架構設計
+    weight: 6
+  - skill: 分散式系統
+    weight: 5
+  nice_to_have:
+  - skill: mongodb
+    weight: 4
+  - skill: redis
+    weight: 3
+  - skill: kafka
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

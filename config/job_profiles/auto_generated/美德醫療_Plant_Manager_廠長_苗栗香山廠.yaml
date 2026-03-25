@@ -1,0 +1,33 @@
+job_profile:
+  role_family: engineering
+  role_name: Plant Manager / 廠長（苗栗香山廠）
+  must_have:
+  - skill: 廠長
+    weight: 8
+  - skill: 工廠廠長
+    weight: 7
+  core:
+  - skill: plant manager
+    weight: 5
+  - skill: production manager
+    weight: 5
+  nice_to_have:
+  - skill: ehs
+    weight: 4
+  - skill: 製造業
+    weight: 3
+  - skill: 紡織
+    weight: 2
+  - skill: 工廠管理
+    weight: 2
+  - skill: 苗栗
+    weight: 2
+  - skill: 現場管理
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

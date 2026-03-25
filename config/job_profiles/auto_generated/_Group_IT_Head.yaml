@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Group IT Head
+  must_have:
+  - skill: 集團it管理
+    weight: 8
+  - skill: erp
+    weight: 7
+  core:
+  - skill: 鼎新t100
+    weight: 6
+  nice_to_have:
+  - skill: 資訊安全
+    weight: 4
+  - skill: 網路架構
+    weight: 3
+  - skill: bpm
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

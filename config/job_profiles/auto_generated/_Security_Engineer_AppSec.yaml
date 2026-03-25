@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Security Engineer AppSec
+  must_have:
+  - skill: 資安測試
+    weight: 8
+  - skill: sdlc
+    weight: 7
+  core:
+  - skill: web開發
+    weight: 6
+  - skill: devops
+    weight: 5
+  nice_to_have:
+  - skill: penetration tester
+    weight: 4
+  - skill: appsec
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

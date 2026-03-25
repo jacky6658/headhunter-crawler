@@ -1,0 +1,27 @@
+job_profile:
+  role_family: engineering
+  role_name: Frontend Developer Vue React
+  must_have:
+  - skill: vue
+    weight: 8
+  - skill: react
+    weight: 7
+  core:
+  - skill: javascript
+    weight: 6
+  - skill: typescript
+    weight: 5
+  nice_to_have:
+  - skill: html5
+    weight: 4
+  - skill: css3
+    weight: 3
+  - skill: rwd
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

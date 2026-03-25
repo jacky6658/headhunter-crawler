@@ -1,0 +1,21 @@
+job_profile:
+  role_family: engineering
+  role_name: Receptionist
+  must_have:
+  - skill: 總機
+    weight: 8
+  - skill: 行政
+    weight: 7
+  core:
+  - skill: 電話接待
+    weight: 6
+  nice_to_have:
+  - skill: 辦公室行政
+    weight: 4
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

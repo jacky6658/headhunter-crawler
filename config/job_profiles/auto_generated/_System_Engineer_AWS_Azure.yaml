@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: System Engineer AWS Azure
+  must_have:
+  - skill: powershell
+    weight: 8
+  - skill: aws
+    weight: 7
+  core:
+  - skill: azure
+    weight: 6
+  - skill: gcp
+    weight: 5
+  nice_to_have:
+  - skill: mcse
+    weight: 4
+  - skill: server monitoring
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,0 +1,35 @@
+job_profile:
+  role_family: engineering
+  role_name: Deputy Plant Manager / 副廠長（苗栗香山廠）
+  must_have:
+  - skill: 副廠長
+    weight: 8
+  - skill: 儲備廠長
+    weight: 7
+  core:
+  - skill: deputy plant manager
+    weight: 5
+  - skill: assistant plant manager
+    weight: 5
+  nice_to_have:
+  - skill: 製造業
+    weight: 4
+  - skill: 紡織
+    weight: 3
+  - skill: sop
+    weight: 2
+  - skill: ehs
+    weight: 2
+  - skill: 苗栗
+    weight: 2
+  - skill: 現場管理
+    weight: 2
+  - skill: 生產排程
+    weight: 2
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

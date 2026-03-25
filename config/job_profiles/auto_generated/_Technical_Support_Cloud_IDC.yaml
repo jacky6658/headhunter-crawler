@@ -1,0 +1,23 @@
+job_profile:
+  role_family: engineering
+  role_name: Technical Support Cloud IDC
+  must_have:
+  - skill: it支援
+    weight: 8
+  - skill: 雲端機房
+    weight: 7
+  core:
+  - skill: 客服
+    weight: 6
+  nice_to_have:
+  - skill: technical support
+    weight: 4
+  - skill: help desk
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

@@ -1,7 +1,7 @@
 # HeadHunter Crawler - API 文檔
 
 **版本**: 1.0.0
-**Base URL**: `http://localhost:5000/api`
+**Base URL**: `http://localhost:5001/api`
 
 ---
 
@@ -968,7 +968,7 @@ POST /api/internal/results
 ```
                  ┌─────────────────────────┐
                  │   HeadHunter Crawler     │
-                 │   (localhost:5000)       │
+                 │   (localhost:5001)       │
                  └──────┬──────────────────┘
                         │
             ┌───────────┼───────────┐

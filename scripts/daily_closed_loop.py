@@ -53,7 +53,7 @@ if _env_file.exists():
 # 設定
 # ──────────────────────────────────────────
 API_BASE = os.environ.get("API_BASE", "https://api-hr.step1ne.com")
-CRAWLER_BASE = os.environ.get("CRAWLER_BASE", "https://crawler.step1ne.com")
+CRAWLER_BASE = os.environ.get("CRAWLER_BASE", "http://localhost:5001")
 API_KEY = os.environ.get("API_SECRET_KEY", "")
 OPERATOR = os.environ.get("OPERATOR", "lobster-auto")
 

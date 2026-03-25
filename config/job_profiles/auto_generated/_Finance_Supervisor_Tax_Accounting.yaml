@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Finance Supervisor Tax Accounting
+  must_have:
+  - skill: 財務會計
+    weight: 8
+  - skill: 稅務規劃
+    weight: 7
+  core:
+  - skill: excel
+    weight: 6
+  - skill: 英文溝通
+    weight: 5
+  nice_to_have:
+  - skill: 結帳作業
+    weight: 4
+  - skill: 帳務報表
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北

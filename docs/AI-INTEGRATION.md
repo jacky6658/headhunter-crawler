@@ -10,7 +10,7 @@
 
 | 系統 | 用途 | API 位址 |
 |------|------|---------|
-| **爬蟲系統** | 搜索 LinkedIn/GitHub 候選人 | `http://localhost:5000/api` |
+| **爬蟲系統** | 搜索 LinkedIn/GitHub 候選人 | `http://localhost:5001/api` |
 | **Step1ne 獵頭系統** | 管理候選人、職缺 | `https://backendstep1ne.zeabur.app/api` |
 
 > 注意：爬蟲系統需要在本地運行，Step1ne 系統在雲端。
@@ -46,7 +46,7 @@
 ### 步驟 1：取得系統職缺
 
 ```bash
-GET http://localhost:5000/api/system/jobs
+GET http://localhost:5001/api/system/jobs
 ```
 
 回應範例：
@@ -72,7 +72,7 @@ GET http://localhost:5000/api/system/jobs
 ### 步驟 1b：自動生成搜索關鍵字（可選）
 
 ```bash
-POST http://localhost:5000/api/keywords/generate
+POST http://localhost:5001/api/keywords/generate
 Content-Type: application/json
 
 {
@@ -91,7 +91,7 @@ Content-Type: application/json
 ### 步驟 2：建立爬蟲任務
 
 ```bash
-POST http://localhost:5000/api/tasks
+POST http://localhost:5001/api/tasks
 Content-Type: application/json
 
 {
@@ -128,7 +128,7 @@ Content-Type: application/json
 ### 步驟 3：啟動任務
 
 ```bash
-POST http://localhost:5000/api/tasks/{task_id}/start
+POST http://localhost:5001/api/tasks/{task_id}/start
 ```
 
 回應：
@@ -142,7 +142,7 @@ POST http://localhost:5000/api/tasks/{task_id}/start
 ### 步驟 4：輪詢任務狀態（等待完成）
 
 ```bash
-GET http://localhost:5000/api/tasks/{task_id}
+GET http://localhost:5001/api/tasks/{task_id}
 ```
 
 回應：
@@ -169,16 +169,16 @@ GET http://localhost:5000/api/tasks/{task_id}
 
 ```bash
 # 取得所有候選人
-GET http://localhost:5000/api/candidates
+GET http://localhost:5001/api/candidates
 
 # 篩選特定任務的候選人
-GET http://localhost:5000/api/candidates?task_id={task_id}
+GET http://localhost:5001/api/candidates?task_id={task_id}
 
 # 篩選特定等級
-GET http://localhost:5000/api/candidates?grade=A
+GET http://localhost:5001/api/candidates?grade=A
 
 # 篩選特定客戶
-GET http://localhost:5000/api/candidates?client_name=XX營造
+GET http://localhost:5001/api/candidates?client_name=XX營造
 ```
 
 回應：
@@ -206,7 +206,7 @@ GET http://localhost:5000/api/candidates?client_name=XX營造
 
 ```bash
 # 推送特定任務的所有候選人
-POST http://localhost:5000/api/system/push
+POST http://localhost:5001/api/system/push
 Content-Type: application/json
 
 {
@@ -217,7 +217,7 @@ Content-Type: application/json
 
 或推送指定候選人：
 ```bash
-POST http://localhost:5000/api/system/push
+POST http://localhost:5001/api/system/push
 Content-Type: application/json
 
 {
@@ -384,24 +384,24 @@ Content-Type: application/json
 以下是 AI 完整執行一次搜索的流程：
 
 ```
-1. GET  localhost:5000/api/system/jobs
+1. GET  localhost:5001/api/system/jobs
    → 找到: id=51, "BIM工程師", search_primary="BIM Revit"
 
-2. POST localhost:5000/api/tasks
+2. POST localhost:5001/api/tasks
    → { client_name: "XX營造", job_title: "BIM工程師",
        primary_skills: ["BIM","Revit"], step1ne_job_id: 51 }
    → 回傳 task_id
 
-3. POST localhost:5000/api/tasks/{task_id}/start
+3. POST localhost:5001/api/tasks/{task_id}/start
    → 任務開始執行
 
-4. GET  localhost:5000/api/tasks/{task_id}  (每 10 秒)
+4. GET  localhost:5001/api/tasks/{task_id}  (每 10 秒)
    → 等到 status == "completed", last_result_count == 25
 
-5. GET  localhost:5000/api/candidates?task_id={task_id}
+5. GET  localhost:5001/api/candidates?task_id={task_id}
    → 取得 25 位候選人
 
-6. POST localhost:5000/api/system/push
+6. POST localhost:5001/api/system/push
    → { task_id: task_id, min_grade: "C" }
    → 推送 A/B/C 級候選人到系統
 
@@ -414,7 +414,7 @@ Content-Type: application/json
 ## 注意事項
 
 - 所有 POST/PUT/PATCH 請求都需要 `Content-Type: application/json`
-- 爬蟲系統 (`localhost:5000`) 必須在本地運行才能使用
+- 爬蟲系統 (`localhost:5001`) 必須在本地運行才能使用
 - Step1ne 系統 (`backendstep1ne.zeabur.app`) 是雲端服務，隨時可用
 - 任務執行時間取決於 `pages` 數量，通常 3 頁約需 2-5 分鐘
 - 候選人姓名是去重的唯一依據，同名候選人只會更新不會重複建立

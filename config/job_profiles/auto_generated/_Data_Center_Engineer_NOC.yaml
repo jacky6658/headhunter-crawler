@@ -1,0 +1,25 @@
+job_profile:
+  role_family: engineering
+  role_name: Data Center Engineer NOC
+  must_have:
+  - skill: linux
+    weight: 8
+  - skill: tcp/ip
+    weight: 7
+  core:
+  - skill: 系統維護
+    weight: 6
+  - skill: 網路管理
+    weight: 5
+  nice_to_have:
+  - skill: 資安證照
+    weight: 4
+  - skill: idc
+    weight: 3
+  context: []
+  constraints:
+    location:
+    - taiwan
+    - taipei
+    - 台灣
+    - 台北
