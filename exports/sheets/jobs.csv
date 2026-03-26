@@ -1,0 +1,38 @@
+ID,職缺名稱,客戶公司,狀態,地點,薪資,關鍵技能,經驗要求,人數,優先度
+7,資安工程師,台灣遊戲橘子,招募中,,面議,Web開發、APP開發、SDLC、DevOps、資安測試,2年以上 Web/APP 開發或資安相關經驗,1,medium
+8,"雲端維運工程師
+(需 on-call)",台灣遊戲橘子,招募中,,面議,Linux、Windows、Git、網路架構、SDLC、CI/CD,3年以上軟體/資訊產業年資,1,medium
+9,"機房維運工程師
+(實體於中和面談)",台灣遊戲橘子,招募中,,面議,Linux、TCP/IP、系統維護、資安證照、網路管理,2年以上機房維運或網路管理經驗,2,medium
+10,"後端開發工程師
+(有考題)",台灣遊戲橘子,招募中,,面議,.NET Core、.NET Framework、MSSQL、T-SQL、WebService,3年以上,1,medium
+11,遊戲測試人員,台灣遊戲橘子,招募中,內湖,面議,遊戲測試、Bug追蹤、FPS遊戲,不拘（有遊戲測試經驗佳）,1,medium
+12,會計專員,台灣遊戲橘子,招募中,內湖,面議,財務會計、Oracle、Excel,1年以上會計相關經驗,1,medium
+13,雲端機房技術客服,台灣遊戲橘子,招募中,中和 / 國分機房,面議,客服、IT支援、雲端機房,不拘（有IT支援或客服經驗佳）,1,medium
+14,後端工程師(Java/C#.Net),創樂科技有限公司,招募中,台北市,面議,"Java, C#(.NET Core), Redis, Kafka, MySQL, MongoDB, 高併發, 高流量, 微服務架構, On-Call",3年以上,1,medium
+15,Senior UI/UX Designer 資深視覺設計師,創樂科技有限公司,招募中,台北市,面議,"Figma (Design System, Auto layout, Variables), UI/UX設計, RWD, Web/iOS/Android, 視覺設計, AI工具 (ChatGPT, Freepik, ImagineArt), 動態製作 (AE, Framer), HTML/CSS/JS",3年以上,1,medium
+18,Java Developer (後端工程師),一通數位有限公司,招募中,台北市內湖區,"60,000~80,000元/月","Java, Spring Boot, 微服務, OpenAPI, Message Queue, Docker, Kubernetes, Redis, MongoDB, CI/CD",2年以上,2-3,medium
+19,系統維運工程師 (DevOps),一通數位有限公司,招募中,台北市內湖區,"70,000~80,000元/月","DevOps, CI/CD, Jenkins, GitLab CI, Docker, Kubernetes, MongoDB, MySQL, Redis, Kafka, Grafana, Prometheus, Linux, Aliyun, AWS, GCP",2年以上,1,medium
+21,餐飲品牌客服,台灣遊戲橘子,招募中,內湖,月薪 33K（季獎金待確認）,"電話服務, 文字客服, 信件溝通",客服1年以上工作經驗佳,1,medium
+23,Finance Supervisor (財務主管),瑞典商英鉑科股份有限公司台灣分公司,招募中,台北市信義區（捷運台北101/世貿站）,待遇面議（經常性薪資達 4 萬元或以上）,"Excel, Word, 稅務規劃與稅報, 會計作業流程, 結帳作業, 會計核算, 編製帳務報表, 英文溝通",3年以上,1,medium
+24,Android Team Lead,CMoney (全躍財經資訊股份有限公司),招募中,新北市板橋區文化路一段 266 號 12 樓,年薪 200 萬元（保障）,"Kotlin, MVVM, MVP, MVC, Room, Navigation, Unit Test, Coroutine, Flow, DI, Git, Scrum, 敏捷開發, App 架構設計, 團隊管理",7年以上,1名,medium
+25,Backend Team Lead,CMoney (全躍財經資訊股份有限公司),招募中,新北市板橋區,年薪 250 萬元,"C#, ASP.NET, .NET Framework, 架構設計, 分散式系統, MongoDB, SQL, ElasticSearch, Redis, Kafka, Kubernetes, 高併發系統, 團隊管理",8年以上,1名,medium
+26,Sr. BigData Engineer (資深大數據工程師),CMoney (全躍財經資訊股份有限公司),招募中,台北（數據中台建設）,年薪 250 萬元（保障）,"Scala, Hadoop, MapReduce, 大規模數據倉儲, 數據建模, Apache Kafka, Apache Beam, Heron, Spark Streaming, 分散式數據處理",5年以上,1名,medium
+29,網站可靠度工程師(Site Reliability Engineer),台灣遊戲橘子,招募中,台北市內湖區瑞湖街111號,面議(40K以上),"Linux, Docker, Kubernetes, Monitoring Systems, Log Collection, RDBMS/NoSQL, Security, Terraform, Prometheus, Azure, GCP, AWS, DevOps, CI/CD, GitLab CI, GitHub Actions, Python, Bash, ELK Stack, Splunk",1年以上,,medium
+30,系統工程師,台灣遊戲橘子,招募中,內湖,面議,"PowerShell, Script, System Management, Server Monitoring, AWS, Azure, GCP, MCSE, RHCE, oncall",2年以上系統管理或IT維運經驗,,medium
+31,總機,台灣遊戲橘子,招募中,內湖,33K～36K,"電話接聽, 訪客接待, 行政庶務, 文書處理, 請購核銷",不拘（有總機或行政經驗佳）,,medium
+32,網站可靠性工程師 Site Reliability Engineer (SRE),宇泰華科技股份有限公司 (Playsee/PalUp),招募中,台北,180萬/年,"GCP, AWS, 自動化壓力測試, CI/CD, Docker, K8s, Shell Script, Python",5年以上 SRE/DevOps 經驗,1,medium
+33,Data Engineer - Generative AI Pipelines 資料工程師,宇泰華科技股份有限公司 (Playsee/PalUp),招募中,台北,140萬/年,"Python, SQL, Spark, Dask, Ray, Airflow, Prefect, Dagster, AWS, GCP, Azure, BigQuery, Cloud Storage, Pinecone, Weaviate, Elasticsearch, Scrapy, Playwright, ETL/ELT, RAG, NLP, Vector Database, Data Pipeline",5年以上,1,medium
+34,產品經理 Product Manager,宇泰華科技股份有限公司 (Playsee/PalUp),招募中,台北,130萬/年,"數位產品規劃, APP產品管理, Prompt Engineering, 英文溝通, 市場調查",1-3年產品設計或專案管理經驗,1,medium
+35,資深後端工程師 Senior Backend Engineer,宇泰華科技股份有限公司 (Playsee/PalUp),招募中,台北,180萬/年,"Golang, API開發, 資料庫效能優化, 高流量高併發, 後台管理系統",5年以上後端開發經驗,1,medium
+36,SA（系統分析師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$45,000~70,000（依經驗面議）","需求分析, RESTful API, SQL, Java, C#, Spring Boot, .NET Core, Git, JSON, HTTP, DevOps, CI-CD",2年以上，資訊管理相關，大學或碩士,2,medium
+37,DBA（資料庫管理人員）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$60,000~90,000（依經驗面議）","SQL Server, Oracle, MySQL, DBA, 資料庫架構, 備份還原, 權限管理, 監控, SQL優化, 高可用, Cluster, AlwaysOn, RAC, ETL, PowerShell, Python, Bash",3年以上，資訊管理/計算機相關，大學或碩士,1,medium
+38,PG-BE（後端開發工程師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$45,000~70,000(依經驗面議)","Java, C#, Spring Boot, .NET Core, RESTful API, JSON, HTTP, SQL, Git, JavaScript, DevOps, CI-CD, 單元測試",2年以上，資訊管理/資訊工程相關科系，大學或碩士,4,medium
+39,PG-FE（前端開發工程師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$45,000~70,000(依經驗面議)","HTML5, CSS3, JavaScript, Vue, React, Angular, RWD, API串接, Git, TypeScript, Jest, Cypress, Tailwind, Bootstrap, Chrome DevTools",2年以上，資訊管理/資訊工程相關科系，大學或碩士,2,medium
+40,SQA（軟體測試工程師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$40,000~60,000（依經驗面議）","軟體測試, SQA, 測試計畫, 測試案例, 功能測試, 整合測試, 回歸測試, 缺陷追蹤, Selenium, Cypress, API測試, Jira, TestRail, Excel, Word",1年以上，資訊管理/資訊工程相關，大學或碩士,1,medium
+41,SRE（系統維運工程師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$65,000~95,000(依經驗面議)","SRE, DevOps, CI/CD, Jenkins, GitLab CI, GitHub Actions, Azure DevOps, Linux, Windows Server, Bash, PowerShell, Python, Docker, Kubernetes, C#, Java, SQL, Git, Nginx, IIS, SQL Server",3年以上，資訊管理/資訊工程相關科系，大學或碩士,2,medium
+42,SD（系統設計師）,仁大資訊,招募中,新北市五股區（新北產業園區）,"月薪 NT$55,000~80,000（依經驗面議）","系統架構設計, SDD, API設計, 資料流設計, 分層架構, 設計模式, SQL, 資料表設計, Code Review, 微服務, Redis, Docker, Kubernetes, OAuth2, JWT, AWS, Azure, GCP, IIS",3年以上，資訊管理/資訊工程相關，大學或碩士,1,medium
+43,資深全端工程師,台灣遊戲橘子,招募中,台灣,面議,"React, Java, Node.js, Express, .NET, HTML, CSS, JavaScript, RESTful API, 資料庫設計, 關聯式資料庫, Docker, Kubernetes, CI/CD, 敏捷開發, UI/UX設計, AWS, Google Cloud, Azure",2年以上全端開發經驗，資訊相關領域碩士以上,1,medium
+44,日本主管特別助理,築楽国際開發株式会社,招募中,東京都千代田區（不定時日本國內出差）,月薪 30-35 萬日圓（含固定加班費 2.22-2.59 萬日圓/月）+ 通勤補助最高 2 萬日圓/月,"日文N1/N2, 口譯, 筆譯, 行程管理, 會議紀錄, 中日翻譯, 英日翻譯",不拘（有口譯或秘書經驗佳）,1,medium
+45,建築專案經理,築楽国際開發株式会社,招募中,東京都千代田區（不定時日本國內出差）,月薪 30-35 萬日圓（含固定加班費 2.22-2.59 萬日圓/月）+ 通勤補助最高 2 萬日圓/月,"建築專案管理, 土木工程, 施工管理, 日文口譯, 建築設計, 會議紀錄, 中日翻譯, 合約審核",建築/土木/相關領域有工作經驗,1,medium
+46,類飯店營運顧問 / 建置型營運負責人,築楽国際開發株式会社,招募中,日本（前期無需常駐，中後期視合作方向）,待議（顧問費制）,"飯店營運, 服務式公寓, 包租代管, SOP建置, 訂房系統, 團隊管理, 營運架構設計, OTA, PMS",5年以上飯店或服務式公寓營運經驗,1,medium
