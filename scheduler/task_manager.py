@@ -267,6 +267,15 @@ class TaskManager:
             task.error_message = str(e)
             self._save_checkpoint(task_id, 'failed', {'error': str(e)})
             logger.error(f"任務 {task_id} 失敗: {e}")
+            # ── 異常截圖存檔 ──
+            try:
+                from crawler.snapshot import save_error_screen
+                save_error_screen(
+                    error_msg=str(e),
+                    context=f"task_{task_id}_{task.job_title}",
+                )
+            except Exception:
+                pass
             # ── Telegram 回報: 任務失敗 ──
             if self.notifier:
                 try:

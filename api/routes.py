@@ -1520,3 +1520,43 @@ def clear_logs():
         return jsonify({'success': True, 'message': '日誌已清空'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── 快照 + 異常截圖 API ─────────────────────────────────────
+
+@api_bp.route('/snapshots')
+def list_snapshots_api():
+    """列出最近的候選人頁面快照"""
+    try:
+        from crawler.snapshot import list_snapshots
+        source = request.args.get('source')
+        limit = int(request.args.get('limit', 20))
+        return jsonify({'data': list_snapshots(source=source, limit=limit)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/snapshots/reparse', methods=['POST'])
+def reparse_snapshot_api():
+    """從快照離線重新解析候選人"""
+    try:
+        from crawler.snapshot import reparse_snapshot
+        data = request.get_json() or {}
+        filepath = data.get('filepath', '')
+        if not filepath:
+            return jsonify({'error': 'Missing filepath'}), 400
+        result = reparse_snapshot(filepath)
+        return jsonify({'data': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/error-screens')
+def list_error_screens_api():
+    """列出最近的異常截圖"""
+    try:
+        from crawler.snapshot import list_error_screens
+        limit = int(request.args.get('limit', 20))
+        return jsonify({'data': list_error_screens(limit=limit)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

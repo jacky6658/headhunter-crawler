@@ -401,6 +401,14 @@ class CakeResumeSearcher:
             if not html:
                 return None
 
+            # 快照存檔（即使後續解析失敗也有 raw HTML）
+            try:
+                from crawler.snapshot import save_snapshot
+                username = cake_url.rstrip('/').split('/')[-1]
+                save_snapshot(html, username, source='cakeresume', url=cake_url)
+            except Exception:
+                pass
+
             # 解析 __NEXT_DATA__
             match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
             if not match:
