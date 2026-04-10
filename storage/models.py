@@ -62,6 +62,12 @@ class Candidate:
     enrichment_source: str = ""        # enrichment 來源: perplexity / jina / linkedin_api
     enrichment_notes: str = ""         # enrichment 額外備註
 
+    # === 多源身份追蹤 ===
+    cakeresume_url: str = ""           # CakeResume profile URL
+    contact_methods: List[dict] = field(default_factory=list)  # [{type:'email', value:'x@y.com', source:'github_patch'}]
+    identity_confidence: float = 0.0   # 0-1, 跨平台比對信心分數
+    sources_found: List[str] = field(default_factory=list)     # ['github', 'cakeresume', 'linkedin']
+
     # === AI 評分 (Phase 3: ContextualScorer) ===
     ai_score: int = 0                  # AI 匹配分數 0-100
     ai_grade: str = ""                 # AI 評等: A / B / C / D
@@ -114,6 +120,11 @@ class Candidate:
             self.ai_match_result,
             self.ai_report,
             self.is_duplicate,
+            # 多源身份
+            self.cakeresume_url,
+            _json.dumps(self.contact_methods, ensure_ascii=False) if self.contact_methods else "",
+            self.identity_confidence,
+            ", ".join(self.sources_found) if isinstance(self.sources_found, list) else self.sources_found,
         ]
 
     @staticmethod
@@ -133,6 +144,9 @@ class Candidate:
             "ai_score", "ai_grade", "ai_recommendation",
             "ai_match_result", "ai_report",
             "is_duplicate",
+            # 多源身份
+            "cakeresume_url", "contact_methods",
+            "identity_confidence", "sources_found",
         ]
 
 
@@ -158,6 +172,11 @@ class SearchTask:
     step1ne_job_id: Optional[int] = None  # Step1ne 系統的 job ID
     auto_push: bool = False               # 完成後自動推送到系統
 
+    # 搜尋策略
+    start_page: int = 0                   # 從第幾頁開始（頁面追蹤）
+    custom_query: str = ""                # 自訂搜尋 query（多角度策略）
+    angle_id: str = ""                    # 使用的搜尋角度 ID
+
     # 狀態
     status: str = "pending"            # pending / running / completed / failed / paused
     progress: int = 0                  # 0-100
@@ -172,6 +191,8 @@ class SearchTask:
     linkedin_count: int = 0
     github_count: int = 0
     ocr_count: int = 0                 # OCR 補充的數量
+    cakeresume_count: int = 0          # CakeResume 搜尋數量
+    dorking_count: int = 0             # Dorking 多站搜尋數量
 
     def to_dict(self) -> dict:
         return asdict(self)

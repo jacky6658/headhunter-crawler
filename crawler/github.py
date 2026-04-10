@@ -184,6 +184,129 @@ class GitHubSearcher:
 
         return ''
 
+    # ── Email 提取（.patch / .atom / events）──────────────────
+
+    _NOREPLY_PATTERNS = ('noreply', 'users.noreply.github.com', 'github.com')
+
+    @classmethod
+    def _is_valid_email(cls, email: str) -> bool:
+        """過濾無效/noreply email"""
+        if not email or '@' not in email:
+            return False
+        email_lower = email.lower()
+        return not any(p in email_lower for p in cls._NOREPLY_PATTERNS)
+
+    def _extract_email(self, username: str, repos: list, gh_headers: dict = None) -> str:
+        """
+        從 GitHub commit 歷史提取真實 email（4 層 fallback）
+        方法 1: Events API（需 token，消耗 rate limit）
+        方法 2: .patch 端點（純 HTTP，不消耗 rate limit）
+        方法 3: .atom feed（純 HTTP，不消耗 rate limit）
+        """
+        # 方法 1: Events API — 從 PushEvent 取 commit author email
+        if gh_headers:
+            try:
+                data, status = self.ad.http_get_json(
+                    f"{GITHUB_API}/users/{username}/events/public?per_page=30",
+                    extra_headers=gh_headers, timeout=10,
+                )
+                if status == 200 and isinstance(data, list):
+                    for event in data:
+                        if event.get('type') == 'PushEvent':
+                            for commit in event.get('payload', {}).get('commits', []):
+                                email = commit.get('author', {}).get('email', '')
+                                if self._is_valid_email(email):
+                                    logger.debug(f"Email (events): {username} -> {email}")
+                                    return email
+            except Exception:
+                pass
+
+        # 找一個有 commit 的 repo
+        candidate_repo = None
+        for repo in (repos or []):
+            if isinstance(repo, dict) and repo.get('size', 0) > 0 and not repo.get('fork'):
+                candidate_repo = repo.get('name')
+                break
+        if not candidate_repo and repos:
+            for repo in repos:
+                if isinstance(repo, dict) and repo.get('name'):
+                    candidate_repo = repo['name']
+                    break
+
+        if not candidate_repo:
+            return ''
+
+        # 方法 2: .patch — GET /user/repo/commit/{sha}.patch → From: header
+        try:
+            # 取最新 commit SHA（透過 atom feed 或 API）
+            html, _ = self.ad.http_get(
+                f"https://github.com/{username}/{candidate_repo}/commits",
+                timeout=10,
+            )
+            sha_match = re.search(r'/commit/([a-f0-9]{40})', html or '')
+            if sha_match:
+                sha = sha_match.group(1)
+                patch, _ = self.ad.http_get(
+                    f"https://github.com/{username}/{candidate_repo}/commit/{sha}.patch",
+                    timeout=10,
+                )
+                from_match = re.search(r'^From:\s+.+?\s+<([^>]+)>', patch or '', re.MULTILINE)
+                if from_match:
+                    email = from_match.group(1)
+                    if self._is_valid_email(email):
+                        logger.debug(f"Email (.patch): {username} -> {email}")
+                        return email
+        except Exception:
+            pass
+
+        # 方法 3: .atom feed — <email> 標籤
+        for branch in ('main', 'master'):
+            try:
+                atom, _ = self.ad.http_get(
+                    f"https://github.com/{username}/{candidate_repo}/commits/{branch}.atom",
+                    timeout=10,
+                )
+                email_matches = re.findall(r'<email>([^<]+)</email>', atom or '')
+                for email in email_matches:
+                    if self._is_valid_email(email):
+                        logger.debug(f"Email (.atom): {username} -> {email}")
+                        return email
+            except Exception:
+                continue
+
+        return ''
+
+    @staticmethod
+    def _extract_email_static(username: str, ad) -> str:
+        """靜態版 email 提取（給外部模組用，不需要完整 GitHubSearcher instance）"""
+        # .patch method
+        try:
+            html, _ = ad.http_get(
+                f"https://github.com/{username}",
+                timeout=8,
+            )
+            repo_match = re.search(rf'/{username}/([\w\-\.]+)', html or '')
+            if repo_match:
+                repo = repo_match.group(1)
+                sha_html, _ = ad.http_get(
+                    f"https://github.com/{username}/{repo}/commits",
+                    timeout=8,
+                )
+                sha_match = re.search(r'/commit/([a-f0-9]{40})', sha_html or '')
+                if sha_match:
+                    patch, _ = ad.http_get(
+                        f"https://github.com/{username}/{repo}/commit/{sha_match.group(1)}.patch",
+                        timeout=8,
+                    )
+                    from_match = re.search(r'^From:\s+.+?\s+<([^>]+)>', patch or '', re.MULTILINE)
+                    if from_match:
+                        email = from_match.group(1)
+                        if GitHubSearcher._is_valid_email(email):
+                            return email
+        except Exception:
+            pass
+        return ''
+
     @property
     def current_token(self) -> Optional[str]:
         if not self.tokens:
@@ -347,7 +470,7 @@ class GitHubSearcher:
                 'location': user.get('location', '') or '',
                 'bio': user.get('bio', '') or '',
                 'company': (user.get('company', '') or '').lstrip('@').strip(),
-                'email': user.get('email', '') or '',
+                'email': user.get('email', '') or self._extract_email(username, repos, gh_headers),
                 'public_repos': user.get('public_repos', 0),
                 'followers': user.get('followers', 0),
                 'skills': languages,
@@ -560,7 +683,7 @@ class GitHubSearcher:
                 'location': user.get('location', '') or '',
                 'bio': user.get('bio', '') or '',
                 'company': (user.get('company', '') or '').lstrip('@').strip(),
-                'email': user.get('email', '') or '',
+                'email': user.get('email', '') or self._extract_email(username, repos, gh_headers),
                 'public_repos': user.get('public_repos', 0),
                 'followers': user.get('followers', 0),
                 'skills': all_languages,

@@ -1,5 +1,5 @@
 """
-持久化去重快取 — JSON 檔案儲存已見的 LinkedIn URL + GitHub username
+持久化去重快取 — JSON 檔案儲存已見的 LinkedIn URL + GitHub username + CakeResume URL + email
 啟動時自動從 Step1ne DB 同步既有候選人，避免重複抓取
 """
 import json
@@ -17,6 +17,8 @@ class DedupCache:
         self.cache_file = cache_file
         self.linkedin_urls: set = set()
         self.github_usernames: set = set()
+        self.cakeresume_urls: set = set()
+        self.email_addresses: set = set()
         self._lock = threading.Lock()
         self.load()
         # 從系統 DB 同步既有候選人
@@ -31,7 +33,10 @@ class DedupCache:
                 data = json.load(f)
             self.linkedin_urls = set(data.get('linkedin_urls', []))
             self.github_usernames = set(data.get('github_usernames', []))
-            logger.info(f"去重快取載入: LinkedIn={len(self.linkedin_urls)}, GitHub={len(self.github_usernames)}")
+            self.cakeresume_urls = set(data.get('cakeresume_urls', []))
+            self.email_addresses = set(data.get('email_addresses', []))
+            logger.info(f"去重快取載入: LinkedIn={len(self.linkedin_urls)}, GitHub={len(self.github_usernames)}, "
+                        f"CakeResume={len(self.cakeresume_urls)}, Email={len(self.email_addresses)}")
         except Exception as e:
             logger.warning(f"去重快取載入失敗: {e}")
 
@@ -43,31 +48,47 @@ class DedupCache:
                     json.dump({
                         'linkedin_urls': list(self.linkedin_urls),
                         'github_usernames': list(self.github_usernames),
+                        'cakeresume_urls': list(self.cakeresume_urls),
+                        'email_addresses': list(self.email_addresses),
                     }, f, ensure_ascii=False)
             except Exception as e:
                 logger.error(f"去重快取儲存失敗: {e}")
 
-    def is_seen(self, linkedin_url: str = None, github_username: str = None) -> bool:
+    def is_seen(self, linkedin_url: str = None, github_username: str = None,
+                cakeresume_url: str = None, email: str = None) -> bool:
         if linkedin_url and linkedin_url in self.linkedin_urls:
             return True
         if github_username and github_username in self.github_usernames:
             return True
+        if cakeresume_url and cakeresume_url in self.cakeresume_urls:
+            return True
+        if email and email in self.email_addresses:
+            return True
         return False
 
-    def mark_seen(self, linkedin_url: str = None, github_username: str = None):
+    def mark_seen(self, linkedin_url: str = None, github_username: str = None,
+                  cakeresume_url: str = None, email: str = None):
         with self._lock:
             if linkedin_url:
                 self.linkedin_urls.add(linkedin_url)
             if github_username:
                 self.github_usernames.add(github_username)
+            if cakeresume_url:
+                self.cakeresume_urls.add(cakeresume_url)
+            if email:
+                self.email_addresses.add(email.lower())
 
     def clear(self, source: str = None):
-        """清除快取。source='linkedin'/'github'/None(全部)"""
+        """清除快取。source='linkedin'/'github'/'cakeresume'/'email'/None(全部)"""
         with self._lock:
             if source is None or source == 'linkedin':
                 self.linkedin_urls.clear()
             if source is None or source == 'github':
                 self.github_usernames.clear()
+            if source is None or source == 'cakeresume':
+                self.cakeresume_urls.clear()
+            if source is None or source == 'email':
+                self.email_addresses.clear()
         self.save()
         logger.info(f"去重快取已清除: {source or '全部'}")
 
@@ -75,6 +96,8 @@ class DedupCache:
         return {
             'linkedin': len(self.linkedin_urls),
             'github': len(self.github_usernames),
+            'cakeresume': len(self.cakeresume_urls),
+            'email': len(self.email_addresses),
         }
 
     def _sync_from_system(self, api_base: str, api_key: str):

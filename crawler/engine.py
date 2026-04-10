@@ -52,6 +52,57 @@ class SearchEngine:
         self.github_searcher = GitHubSearcher(config, self.ad,
                                                stop_event=stop_event)
 
+        # === 新搜尋來源 ===
+        self.cakeresume_searcher = None
+        if config.get('crawler', {}).get('cakeresume', {}).get('enabled', False):
+            try:
+                from crawler.cakeresume import CakeResumeSearcher
+                self.cakeresume_searcher = CakeResumeSearcher(config, self.ad, stop_event)
+                logger.info("CakeResumeSearcher 已初始化")
+            except Exception as e:
+                logger.warning(f"CakeResumeSearcher 初始化失敗: {e}")
+
+        self.dorking_searcher = None
+        if config.get('crawler', {}).get('dorking', {}).get('enabled', False):
+            try:
+                from crawler.dorking import DorkingSearcher
+                self.dorking_searcher = DorkingSearcher(config, self.ad, stop_event)
+                logger.info("DorkingSearcher 已初始化")
+            except Exception as e:
+                logger.warning(f"DorkingSearcher 初始化失敗: {e}")
+
+        # 已知好公司策略
+        self.company_strategy = None
+        if config.get('crawler', {}).get('company_strategy', {}).get('enabled', False):
+            try:
+                from crawler.company_strategy import CompanyStrategy
+                self.company_strategy = CompanyStrategy(config)
+            except Exception as e:
+                logger.warning(f"CompanyStrategy 初始化失敗: {e}")
+
+        # StackOverflow 搜尋
+        self.stackoverflow_searcher = None
+        if config.get('crawler', {}).get('stackoverflow', {}).get('enabled', False):
+            try:
+                from crawler.stackoverflow import StackOverflowSearcher
+                self.stackoverflow_searcher = StackOverflowSearcher(config, self.ad, stop_event)
+                logger.info("StackOverflowSearcher 已初始化")
+            except Exception as e:
+                logger.warning(f"StackOverflowSearcher 初始化失敗: {e}")
+
+        # 研討會講者搜尋
+        self.conference_searcher = None
+        try:
+            from crawler.conference import ConferenceSearcher
+            self.conference_searcher = ConferenceSearcher(config, self.ad, stop_event)
+            logger.info("ConferenceSearcher 已初始化")
+        except Exception as e:
+            logger.warning(f"ConferenceSearcher 初始化失敗: {e}")
+
+        # 跨平台身份合併引擎
+        from crawler.identity_merger import IdentityMerger
+        self.identity_merger = IdentityMerger(config)
+
         # 技能評分系統 (fallback)
         base_dir = os.path.dirname(os.path.dirname(__file__))
         synonyms_path = os.path.join(base_dir, 'config', 'skills_synonyms.yaml')
@@ -106,10 +157,19 @@ class SearchEngine:
         if self.on_progress:
             self.linkedin_searcher.on_progress = self.on_progress
             self.github_searcher.on_progress = self.on_progress
+            if self.cakeresume_searcher:
+                self.cakeresume_searcher.on_progress = self.on_progress
 
-        # ═══ Phase 1: 搜尋 ═══
+        # ═══ Phase 0: 好公司策略 ═══
+        company_queries = []
+        if self.company_strategy:
+            company_queries = self.company_strategy.get_company_queries(self.task.primary_skills)
+            if company_queries:
+                logger.info(f"[Phase 0] 好公司策略: {len(company_queries)} 組 query")
+
+        # ═══ Phase 1: 多源搜尋 ═══
         self._check_stop()
-        logger.info("[Phase 1] LinkedIn + GitHub 搜尋...")
+        logger.info("[Phase 1a] LinkedIn 搜尋...")
         linkedin_result = self.linkedin_searcher.search_with_fallback(
             skills=skills,
             location_zh=location_zh,
@@ -119,9 +179,13 @@ class SearchEngine:
             job_title=self.task.job_title,
             primary_skills=self.task.primary_skills,
             secondary_skills=self.task.secondary_skills,
+            start_page=getattr(self.task, 'start_page', 0),
+            custom_query=getattr(self.task, 'custom_query', '') or None,
         )
         linkedin_data = linkedin_result.get('data', [])
 
+        self._check_stop()
+        logger.info("[Phase 1b] GitHub 搜尋...")
         github_result = self.github_searcher.search_users(
             skills=skills,
             location=location_en,
@@ -129,23 +193,115 @@ class SearchEngine:
         )
         github_data = github_result.get('data', [])
 
-        # 合併 + 去重
-        candidates = self._merge_and_dedup(linkedin_data, github_data)
+        # Phase 1c: CakeResume 搜尋
+        cakeresume_data = []
+        if self.cakeresume_searcher:
+            self._check_stop()
+            logger.info("[Phase 1c] CakeResume 搜尋...")
+            cake_result = self.cakeresume_searcher.search(
+                skills=skills,
+                location=location_en,
+                pages=pages,
+                brave_key=brave_key,
+                job_title=self.task.job_title,
+                company_queries=company_queries,
+            )
+            cakeresume_data = cake_result.get('data', [])
+
+        # Phase 1d: Dorking 多站搜尋
+        dorking_data = []
+        if self.dorking_searcher:
+            self._check_stop()
+            logger.info("[Phase 1d] Dorking 多站搜尋...")
+            dork_result = self.dorking_searcher.search(
+                skills=skills,
+                location=location_en,
+                brave_key=brave_key,
+                company_queries=company_queries,
+            )
+            dorking_data = dork_result.get('data', [])
+
+        # Phase 1e: StackOverflow 搜尋
+        stackoverflow_data = []
+        if self.stackoverflow_searcher:
+            self._check_stop()
+            logger.info("[Phase 1e] StackOverflow 搜尋...")
+            so_result = self.stackoverflow_searcher.search(
+                skills=skills,
+                location=location_en,
+            )
+            stackoverflow_data = so_result.get('data', [])
+
+        # Phase 1f: 研討會講者搜尋
+        conference_data = []
+        if self.conference_searcher:
+            self._check_stop()
+            logger.info("[Phase 1f] 研討會講者搜尋...")
+            conf_result = self.conference_searcher.search(
+                skills=skills,
+                location=location_en,
+                brave_key=brave_key,
+            )
+            conference_data = conf_result.get('data', [])
+
+        # ═══ Phase 1g: 跨平台身份合併 ═══
+        self._check_stop()
+        source_data = {
+            'linkedin': linkedin_data,
+            'github': github_data,
+            'cakeresume': cakeresume_data,
+            'dorking': dorking_data,
+            'stackoverflow': stackoverflow_data,
+            'conference': conference_data,
+        }
+        candidates = self.identity_merger.merge(source_data, self.dedup, task=self.task)
+
+        # 更新任務計數
+        self.task.linkedin_count = len(linkedin_data)
+        self.task.github_count = len(github_data)
+        if hasattr(self.task, 'cakeresume_count'):
+            self.task.cakeresume_count = len(cakeresume_data)
+        if hasattr(self.task, 'dorking_count'):
+            self.task.dorking_count = len(dorking_data)
 
         logger.info(f"Phase 1 完成: LinkedIn={len(linkedin_data)} GitHub={len(github_data)} "
-                     f"去重後={len(candidates)}")
+                     f"CakeResume={len(cakeresume_data)} Dorking={len(dorking_data)} "
+                     f"SO={len(stackoverflow_data)} Conference={len(conference_data)} "
+                     f"→ 合併後={len(candidates)}")
 
-        # ═══ Phase 1.5: 相關性篩選 ═══
+        # ═══ Phase 1.5: 相關性篩選 + 本地人過濾 ═══
         self._check_stop()
         if candidates:
             before_count = len(candidates)
             candidates = self._filter_by_relevance(candidates)
             filtered_count = before_count - len(candidates)
             if filtered_count > 0:
-                logger.info(f"[Phase 1.5] 相關性篩選: {before_count} → {len(candidates)} "
+                logger.info(f"[Phase 1.5a] 相關性篩選: {before_count} → {len(candidates)} "
                            f"(過濾 {filtered_count} 位不相關候選人)")
-            else:
-                logger.info(f"[Phase 1.5] 相關性篩選: 全部 {len(candidates)} 位通過")
+
+            # 本地人過濾
+            before_local = len(candidates)
+            try:
+                from crawler.locality_filter import locality_score
+                local_candidates = []
+                foreign_count = 0
+                for c in candidates:
+                    c_dict = c.to_dict() if hasattr(c, 'to_dict') else c
+                    ls = locality_score(c_dict)
+                    if ls >= 0.15:  # 搜尋階段用較低閾值，避免誤殺
+                        local_candidates.append(c)
+                    else:
+                        foreign_count += 1
+                        logger.debug(f"本地人過濾: {c.name} (locality={ls:.2f})")
+                if foreign_count > 0:
+                    candidates = local_candidates
+                    logger.info(f"[Phase 1.5b] 本地人過濾: {before_local} → {len(candidates)} "
+                               f"(過濾 {foreign_count} 位非本地候選人)")
+            except Exception as e:
+                logger.warning(f"本地人過濾失敗: {e}")
+
+            if not filtered_count and not (before_local - len(candidates)):
+                logger.info(f"[Phase 1.5] 篩選: 全部 {len(candidates)} 位通過")
 
         # ═══ Phase 2: Enrichment (ProfileEnricher) ═══
         self._check_stop()
@@ -241,15 +397,42 @@ class SearchEngine:
 
         ProfileEnricher 已實作三層備援: LinkedIn API → Perplexity → Jina
         """
+        # 只對資料不足的候選人做 enrichment（已有技能資料的跳過）
+        needs_enrich = []
+        skip_indices = set()
+        for i, c in enumerate(candidates):
+            has_skills = bool(c.skills and len(c.skills) >= 2)
+            has_github = bool(c.github_url and c.tech_stack)
+            has_cake_data = 'cakeresume' in (c.source or '')
+            if has_skills or has_github or has_cake_data:
+                skip_indices.add(i)
+            else:
+                needs_enrich.append(c)
+
+        if skip_indices:
+            logger.info(f"Enrichment 跳過 {len(skip_indices)} 位（已有足夠資料），"
+                       f"需補充 {len(needs_enrich)} 位")
+
         # 轉為 dict list 給 ProfileEnricher
-        cand_dicts = [c.to_dict() for c in candidates]
+        cand_dicts = [c.to_dict() for c in needs_enrich]
 
         def on_enrich_progress(completed, total, name):
             if self.on_progress:
                 self.on_progress(completed, total, completed, f"enrichment ({name})")
 
-        # 呼叫已實作的 enrich_batch
-        enriched_list = self.enricher.enrich_batch(cand_dicts, on_progress=on_enrich_progress)
+        # 只對需要的候選人做 enrichment
+        enriched_list = self.enricher.enrich_batch(cand_dicts, on_progress=on_enrich_progress) if cand_dicts else []
+
+        # 建立完整的 enriched mapping（跳過的用 None）
+        full_enriched = []
+        enrich_idx = 0
+        for i in range(len(candidates)):
+            if i in skip_indices:
+                full_enriched.append(None)
+            else:
+                full_enriched.append(enriched_list[enrich_idx] if enrich_idx < len(enriched_list) else None)
+                enrich_idx += 1
+        enriched_list = full_enriched
 
         # 寫回 Candidate 物件
         enriched_count = 0

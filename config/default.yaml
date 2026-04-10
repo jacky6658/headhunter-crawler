@@ -105,6 +105,27 @@ crawler:
   max_pages: 10
   ocr_enabled: true
   sample_per_page: 5
+  cakeresume:
+    enabled: true
+    max_results_per_query: 20
+    profile_scrape: true
+    delay:
+      min: 1.0
+      max: 3.0
+  dorking:
+    enabled: true
+    sites:
+      - {site: medium.com, source: blog}
+      - {site: dev.to, source: blog}
+      - {site: speakerdeck.com, source: conference}
+      - {site: hackmd.io, source: blog}
+  stackoverflow:
+    enabled: true
+    api_key: ''
+  conference:
+    enabled: true
+  company_strategy:
+    enabled: true
 dedup:
   cache_file: /Users/user/clawd/headhunter-crawler/data/dedup_cache.json
 enrichment:

@@ -112,6 +112,98 @@ def update_candidate(candidate_id):
     return jsonify({'error': 'Missing client_name or status'}), 400
 
 
+@api_bp.route('/candidates/recommend')
+def recommend_candidates():
+    """
+    即時推薦 API — 從 DB 搜尋符合技能的 A+B 級候選人
+
+    Query params:
+      skills: 逗號分隔技能 (e.g. "golang,kubernetes")
+      location: 地區 (default: "taiwan")
+      limit: 最多回傳幾筆 (default: 10)
+      min_grade: 最低等級 (default: "B", 只回 A+B)
+    """
+    store = _get_sheets_store()
+    if not store:
+        return jsonify({'error': '資料儲存未初始化'}), 503
+
+    skills_str = request.args.get('skills', '')
+    skills = [s.strip().lower() for s in skills_str.split(',') if s.strip()]
+    location = request.args.get('location', 'taiwan').lower()
+    limit = int(request.args.get('limit', 10))
+    min_grade = request.args.get('min_grade', 'B').upper()
+
+    # 等級過濾集合
+    grade_filter = {'A'}
+    if min_grade in ('B', 'C', 'D'):
+        grade_filter.add('B')
+    if min_grade in ('C', 'D'):
+        grade_filter.add('C')
+    if min_grade == 'D':
+        grade_filter.add('D')
+
+    # 搜尋所有客戶的候選人（跨客戶去重）
+    all_candidates = []
+    seen_keys = set()  # 用 linkedin_url 或 github_username 或 name 去重
+    for client in store.list_clients():
+        result = store.read_candidates(client_name=client, limit=9999)
+        for c in result.get('data', []):
+            grade = c.get('grade', '')
+            if grade not in grade_filter:
+                continue
+            # 去重: 用 linkedin_url > github_username > name 作為唯一鍵
+            dedup_key = (
+                (c.get('linkedin_url') or '').lower().rstrip('/') or
+                (c.get('github_username') or '').lower() or
+                (c.get('name') or '').strip().lower()
+            )
+            if dedup_key and dedup_key in seen_keys:
+                continue
+            if dedup_key:
+                seen_keys.add(dedup_key)
+            all_candidates.append(c)
+
+    # 技能匹配排序
+    def match_score(candidate):
+        c_skills = []
+        raw = candidate.get('skills', [])
+        if isinstance(raw, str):
+            c_skills = [s.strip().lower() for s in raw.split(',')]
+        elif isinstance(raw, list):
+            c_skills = [s.lower() for s in raw]
+
+        c_bio = (candidate.get('bio', '') or '').lower()
+        c_title = (candidate.get('title', '') or '').lower()
+        c_tech = candidate.get('tech_stack', [])
+        if isinstance(c_tech, list):
+            c_skills.extend(t.lower() for t in c_tech)
+
+        searchable = ' '.join(c_skills) + ' ' + c_bio + ' ' + c_title
+        hits = sum(1 for s in skills if s in searchable)
+        grade_bonus = {'A': 100, 'B': 50, 'C': 10, 'D': 0}.get(candidate.get('grade', ''), 0)
+        return hits * 100 + grade_bonus + candidate.get('score', 0)
+
+    if skills:
+        all_candidates.sort(key=match_score, reverse=True)
+        # 只留有至少 1 個技能匹配的
+        all_candidates = [c for c in all_candidates if match_score(c) > 0]
+
+    # 本地人過濾（預設開啟，可用 local_only=false 關閉）
+    local_only = request.args.get('local_only', 'true').lower() != 'false'
+    if local_only:
+        try:
+            from crawler.locality_filter import filter_locals
+            all_candidates = filter_locals(all_candidates, threshold=0.25)
+        except Exception as e:
+            logger.warning(f"本地人過濾失敗: {e}")
+
+    return jsonify({
+        'data': all_candidates[:limit],
+        'total': len(all_candidates),
+        'skills_searched': skills,
+    })
+
+
 @api_bp.route('/candidates/export', methods=['POST'])
 def export_candidates():
     store = _get_sheets_store()
@@ -170,12 +262,15 @@ def create_task():
         schedule_weekdays=data.get('schedule_weekdays', []),
         step1ne_job_id=data.get('step1ne_job_id'),
         auto_push=data.get('auto_push', False),
+        start_page=data.get('start_page', 0),
+        custom_query=data.get('custom_query', ''),
+        angle_id=data.get('angle_id', ''),
     )
 
     task_id = tm.add_task(task)
 
-    # 如果是 once，立即執行
-    if task.schedule_type == 'once' or data.get('run_now'):
+    # 立即執行（once 或空字串或 run_now）
+    if task.schedule_type in ('once', '') or data.get('run_now'):
         tm.run_now(task_id)
 
     return jsonify({'id': task_id, 'task': task.to_dict()}), 201

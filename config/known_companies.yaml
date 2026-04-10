@@ -1,0 +1,111 @@
+# 技術棧 → 使用該技術的台灣公司對照表
+# 用於「已知好公司」搜尋策略，提升搜尋精準度
+
+golang:
+  - Dcard
+  - LINE
+  - Appier
+  - 91APP
+  - KKCompany
+  - Gogolook
+  - PicCollage
+  - iKala
+  - CoolBitX
+  - Maicoin
+
+kubernetes:
+  - LINE
+  - Gogolook
+  - Appier
+  - Trend Micro
+  - 91APP
+  - iKala
+  - Synology
+
+java:
+  - LINE
+  - Shopee
+  - 蝦皮購物
+  - Garena
+  - Yahoo
+  - ASUS
+  - HTC
+  - Cathay United Bank
+  - 中國信託
+
+python:
+  - Appier
+  - iKala
+  - Gogolook
+  - CoolBitX
+  - 趨勢科技
+  - Dcard
+  - KKBox
+
+react:
+  - Dcard
+  - PicCollage
+  - 17LIVE
+  - KKBox
+  - Line
+  - Pinkoi
+  - Hahow
+
+typescript:
+  - Dcard
+  - PicCollage
+  - Pinkoi
+  - 17LIVE
+  - CakeResume
+
+rust:
+  - CoolBitX
+  - Maicoin
+
+flutter:
+  - 街口支付
+  - PicCollage
+  - iCook
+
+devops:
+  - LINE
+  - Gogolook
+  - Trend Micro
+  - Synology
+  - ASUS
+
+machine_learning:
+  - Appier
+  - iKala
+  - Gogolook
+  - 趨勢科技
+  - MediaTek
+
+ios:
+  - LINE
+  - Gogolook
+  - PicCollage
+  - 17LIVE
+  - KKBox
+  - Pinkoi
+
+android:
+  - LINE
+  - Gogolook
+  - PicCollage
+  - 17LIVE
+  - KKBox
+  - Pinkoi
+
+data_engineering:
+  - Appier
+  - LINE
+  - iKala
+  - 91APP
+  - KKBox
+
+security:
+  - 趨勢科技
+  - CyCraft
+  - TeamT5
+  - Synology
