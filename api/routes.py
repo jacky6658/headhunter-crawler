@@ -163,20 +163,21 @@ def recommend_candidates():
                 seen_keys.add(dedup_key)
             all_candidates.append(c)
 
-    # 技能匹配排序 — 嚴格模式：沒有技能命中的不推薦
+    # 技能匹配排序 — 嚴格模式：精確匹配 + 最少 2 個技能命中
     def match_score(candidate):
-        c_skills = []
+        c_skills = set()
         raw = candidate.get('skills', [])
         if isinstance(raw, str):
-            c_skills = [s.strip().lower() for s in raw.split(',')]
+            c_skills = set(s.strip().lower() for s in raw.split(',') if s.strip())
         elif isinstance(raw, list):
-            c_skills = [s.lower() for s in raw]
+            c_skills = set(s.lower() for s in raw if s)
+
+        c_tech = candidate.get('tech_stack', [])
+        if isinstance(c_tech, list):
+            c_skills.update(t.lower() for t in c_tech if t)
 
         c_bio = (candidate.get('bio', '') or '').lower()
         c_title = (candidate.get('title', '') or '').lower()
-        c_tech = candidate.get('tech_stack', [])
-        if isinstance(c_tech, list):
-            c_skills.extend(t.lower() for t in c_tech)
 
         # 加入工作經歷的職稱
         work_history = candidate.get('work_history', [])
@@ -188,11 +189,21 @@ def recommend_candidates():
                     c_bio += ' ' + (wh.get('title', '') or '').lower()
                     c_bio += ' ' + (wh.get('description', '') or '').lower()
 
-        searchable = ' '.join(c_skills) + ' ' + c_bio + ' ' + c_title
-        hits = sum(1 for s in skills if s in searchable)
+        # 精確匹配：技能必須完全匹配（不是子字串）
+        # 例如 "mvc" 不能匹配 "spring-mvc"
+        hits = 0
+        for s in skills:
+            s_lower = s.lower()
+            # 精確匹配技能清單
+            if s_lower in c_skills:
+                hits += 1
+            # 全詞匹配 bio/title（用 word boundary）
+            elif f' {s_lower} ' in f' {c_bio} ' or f' {s_lower} ' in f' {c_title} ':
+                hits += 1
 
-        # 關鍵：沒有任何技能命中 → 分數 = 0（不推薦）
-        if hits == 0:
+        # 需要至少 2 個技能命中才推薦（避免只匹配到 1 個通用詞）
+        min_hits = min(2, len(skills))  # 如果只搜 1 個技能，則 1 個就夠
+        if hits < min_hits:
             return 0
 
         grade_bonus = {'A': 20, 'B': 10, 'C': 5, 'D': 0}.get(candidate.get('grade', ''), 0)
