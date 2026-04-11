@@ -932,6 +932,50 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
         log.error(f"poll_and_notify error: {e}")
 
 
+async def _start_multisource_search_for_job(job_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """路徑 1: 從 Step1ne 職缺取技能 → 建立多源搜尋任務 → 進度追蹤 → 完成通知"""
+    import requests as _req
+
+    # 取得職缺資料
+    job = db_get_job(job_id)
+    if not job:
+        job = (await api_get_async(f"/api/crawler/pipeline/jobs/{job_id}")).get("data", {})
+
+    position = job.get("position_name", "") or f"Job #{job_id}"
+    client = job.get("client_company", "") or ""
+    skills_str = job.get("key_skills", "")
+    location = job.get("location", "Taiwan") or "Taiwan"
+
+    # 解析技能
+    skills = [s.strip() for s in skills_str.split(",") if s.strip()] if skills_str else []
+    if not skills:
+        # 從職缺名稱提取
+        skills = [s.strip() for s in position.split() if len(s.strip()) >= 2][:3]
+
+    if not skills:
+        await send_reply(update, context, f"⚠️ #{job_id} 無法識別搜尋技能，請用「自由搜尋人才」手動輸入")
+        return
+
+    # 建立多源搜尋任務
+    primary = skills[:3]
+    secondary = skills[3:]
+    task_id = await _start_crawler_search(primary + secondary, position, location, update, context)
+
+    if task_id:
+        await send_reply(update, context,
+            f"🚀 <b>#{job_id} {position}</b> 多源搜尋已啟動\n"
+            f"🏢 {client}\n"
+            f"🔧 技能: {', '.join(skills[:5])}\n"
+            f"📋 任務 ID: <code>{task_id}</code>\n"
+            f"🔄 搜尋來源: LinkedIn + GitHub + CakeResume\n\n"
+            f"⏳ 預計 3-8 分鐘，完成後自動推送結果")
+
+        # 背景進度追蹤 + 完成通知
+        asyncio.create_task(_poll_and_notify(task_id, skills, update, context))
+    else:
+        await send_reply(update, context, f"❌ #{job_id} 搜尋任務建立失敗")
+
+
 async def _instant_recommend_for_job(job_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE):
     """路徑 1: 從職缺取技能 → 秒回推薦 + 啟動爬蟲"""
     job = db_get_job(job_id)
@@ -1089,8 +1133,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"🚀 <b>#{jid} 搜尋啟動中...</b>", parse_mode="HTML")
         # 路徑 1: 先即時推薦 DB 既有人選（秒回）
         await _instant_recommend_for_job(jid, update, context)
-        # 再啟動完整閉環
-        await _start_loop_from_callback([jid], update, context)
+        # 路徑 2: 啟動新的多源搜尋（不走舊閉環）
+        await _start_multisource_search_for_job(jid, update, context)
 
     elif data.startswith("fb_"):
         await _handle_feedback_callback(query, context)

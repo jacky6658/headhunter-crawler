@@ -163,7 +163,7 @@ def recommend_candidates():
                 seen_keys.add(dedup_key)
             all_candidates.append(c)
 
-    # 技能匹配排序
+    # 技能匹配排序 — 嚴格模式：沒有技能命中的不推薦
     def match_score(candidate):
         c_skills = []
         raw = candidate.get('skills', [])
@@ -178,15 +178,29 @@ def recommend_candidates():
         if isinstance(c_tech, list):
             c_skills.extend(t.lower() for t in c_tech)
 
+        # 加入工作經歷的職稱
+        work_history = candidate.get('work_history', [])
+        if isinstance(work_history, str):
+            c_bio += ' ' + work_history.lower()
+        elif isinstance(work_history, list):
+            for wh in work_history[:3]:
+                if isinstance(wh, dict):
+                    c_bio += ' ' + (wh.get('title', '') or '').lower()
+                    c_bio += ' ' + (wh.get('description', '') or '').lower()
+
         searchable = ' '.join(c_skills) + ' ' + c_bio + ' ' + c_title
         hits = sum(1 for s in skills if s in searchable)
-        grade_bonus = {'A': 100, 'B': 50, 'C': 10, 'D': 0}.get(candidate.get('grade', ''), 0)
+
+        # 關鍵：沒有任何技能命中 → 分數 = 0（不推薦）
+        if hits == 0:
+            return 0
+
+        grade_bonus = {'A': 20, 'B': 10, 'C': 5, 'D': 0}.get(candidate.get('grade', ''), 0)
         return hits * 100 + grade_bonus + candidate.get('score', 0)
 
     if skills:
-        all_candidates.sort(key=match_score, reverse=True)
-        # 只留有至少 1 個技能匹配的
         all_candidates = [c for c in all_candidates if match_score(c) > 0]
+        all_candidates.sort(key=match_score, reverse=True)
 
     # 本地人過濾（預設開啟，可用 local_only=false 關閉）
     local_only = request.args.get('local_only', 'true').lower() != 'false'
