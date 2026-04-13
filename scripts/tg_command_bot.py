@@ -861,13 +861,24 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     li_count = status.get('linkedin_count', 0)
                     gh_count = status.get('github_count', 0)
 
-                    # 從 DB 拿結果（放寬到 C 級，公司搜尋不用嚴格技能匹配）
+                    # 從 DB 拿結果 — 用多種方式搜
                     skills_str = ','.join(skills)
-                    rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=C",
-                                  timeout=5)
-                    new_candidates = rr.json().get('data', []) if rr.status_code == 200 else []
+                    new_candidates = []
 
-                    # 如果沒結果，再試不限等級
+                    # 方法 1: 精確技能匹配 (B+ 級)
+                    rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=B",
+                                  timeout=5)
+                    if rr.status_code == 200:
+                        new_candidates = rr.json().get('data', [])
+
+                    # 方法 2: 放寬到 C 級
+                    if not new_candidates:
+                        rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=C",
+                                      timeout=5)
+                        if rr.status_code == 200:
+                            new_candidates = rr.json().get('data', [])
+
+                    # 方法 3: 不限等級（公司搜尋 fallback）
                     if not new_candidates:
                         rr2 = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=D",
                                        timeout=5)
