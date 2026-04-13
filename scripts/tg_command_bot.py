@@ -861,11 +861,17 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     li_count = status.get('linkedin_count', 0)
                     gh_count = status.get('github_count', 0)
 
-                    # 從 DB 拿新搜尋的 A+B 結果（帶本地人過濾）
+                    # 從 DB 拿結果（放寬到 C 級，公司搜尋不用嚴格技能匹配）
                     skills_str = ','.join(skills)
-                    rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=10&min_grade=B",
+                    rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=C",
                                   timeout=5)
                     new_candidates = rr.json().get('data', []) if rr.status_code == 200 else []
+
+                    # 如果沒結果，再試不限等級
+                    if not new_candidates:
+                        rr2 = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=D",
+                                       timeout=5)
+                        new_candidates = rr2.json().get('data', []) if rr2.status_code == 200 else []
 
                     lines = [
                         f"✅ <b>多源搜尋完成</b>\n",
