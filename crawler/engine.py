@@ -150,6 +150,26 @@ class SearchEngine:
         brave_key = self.config.get('api_keys', {}).get('brave_api_key', '')
 
         total_phases = 3 if not self.enricher else 5
+
+        # ═══ 職缺類型判斷：工程師 vs 非工程師 ═══
+        _TECH_INDICATORS = {
+            'java', 'python', 'golang', 'go', 'javascript', 'typescript', 'react', 'vue',
+            'angular', 'node', 'docker', 'kubernetes', 'aws', 'gcp', 'azure', 'devops',
+            'sre', 'backend', 'frontend', 'fullstack', 'full-stack', 'ios', 'android',
+            'flutter', 'rust', 'c++', 'c#', '.net', 'spring', 'django', 'flask', 'rails',
+            'postgresql', 'mysql', 'mongodb', 'redis', 'graphql', 'grpc', 'terraform',
+            'jenkins', 'ci/cd', 'machine learning', 'deep learning', 'ai', 'ml',
+            'data engineer', 'software', 'engineer', '工程師', '前端', '後端', '全端',
+            'kotlin', 'swift', 'scala', 'php', 'ruby', 'linux', 'git',
+        }
+        all_text = ' '.join(skills + [self.task.job_title or '']).lower()
+        is_tech_role = any(t in all_text for t in _TECH_INDICATORS)
+
+        if not is_tech_role:
+            logger.info(f"職缺類型判斷: 非工程師 → 只搜 LinkedIn（跳過 GitHub/CakeResume/StackOverflow）")
+        else:
+            logger.info(f"職缺類型判斷: 工程師 → 全源搜尋")
+
         logger.info(f"開始搜尋: {self.task.client_name}/{self.task.job_title} | "
                      f"技能={skills} | 地區={location_en} | 頁數={pages}")
 
@@ -184,65 +204,70 @@ class SearchEngine:
         )
         linkedin_data = linkedin_result.get('data', [])
 
-        self._check_stop()
-        logger.info("[Phase 1b] GitHub 搜尋...")
-        github_result = self.github_searcher.search_users(
-            skills=skills,
-            location=location_en,
-            pages=pages,
-        )
-        github_data = github_result.get('data', [])
-
-        # Phase 1c: CakeResume 搜尋
+        # Phase 1b-d: 只有工程師職缺才搜 GitHub/CakeResume/Dorking
+        github_data = []
         cakeresume_data = []
-        if self.cakeresume_searcher:
+        dorking_data = []
+
+        if is_tech_role:
             self._check_stop()
-            logger.info("[Phase 1c] CakeResume 搜尋...")
-            cake_result = self.cakeresume_searcher.search(
+            logger.info("[Phase 1b] GitHub 搜尋...")
+            github_result = self.github_searcher.search_users(
                 skills=skills,
                 location=location_en,
                 pages=pages,
-                brave_key=brave_key,
-                job_title=self.task.job_title,
-                company_queries=company_queries,
             )
-            cakeresume_data = cake_result.get('data', [])
+            github_data = github_result.get('data', [])
 
-        # Phase 1d: Dorking 多站搜尋
-        dorking_data = []
-        if self.dorking_searcher:
-            self._check_stop()
-            logger.info("[Phase 1d] Dorking 多站搜尋...")
-            dork_result = self.dorking_searcher.search(
-                skills=skills,
-                location=location_en,
-                brave_key=brave_key,
-                company_queries=company_queries,
-            )
-            dorking_data = dork_result.get('data', [])
+            if self.cakeresume_searcher:
+                self._check_stop()
+                logger.info("[Phase 1c] CakeResume 搜尋...")
+                cake_result = self.cakeresume_searcher.search(
+                    skills=skills,
+                    location=location_en,
+                    pages=pages,
+                    brave_key=brave_key,
+                    job_title=self.task.job_title,
+                    company_queries=company_queries,
+                )
+                cakeresume_data = cake_result.get('data', [])
 
-        # Phase 1e: StackOverflow 搜尋
+            if self.dorking_searcher:
+                self._check_stop()
+                logger.info("[Phase 1d] Dorking 多站搜尋...")
+                dork_result = self.dorking_searcher.search(
+                    skills=skills,
+                    location=location_en,
+                    brave_key=brave_key,
+                    company_queries=company_queries,
+                )
+                dorking_data = dork_result.get('data', [])
+        else:
+            logger.info("[Phase 1b-d] 跳過 GitHub/CakeResume/Dorking（非工程師職缺）")
+
+        # Phase 1e-f: 只有工程師職缺才搜 StackOverflow/Conference
         stackoverflow_data = []
-        if self.stackoverflow_searcher:
-            self._check_stop()
-            logger.info("[Phase 1e] StackOverflow 搜尋...")
-            so_result = self.stackoverflow_searcher.search(
-                skills=skills,
-                location=location_en,
-            )
-            stackoverflow_data = so_result.get('data', [])
-
-        # Phase 1f: 研討會講者搜尋
         conference_data = []
-        if self.conference_searcher:
-            self._check_stop()
-            logger.info("[Phase 1f] 研討會講者搜尋...")
-            conf_result = self.conference_searcher.search(
-                skills=skills,
-                location=location_en,
-                brave_key=brave_key,
-            )
-            conference_data = conf_result.get('data', [])
+
+        if is_tech_role:
+            if self.stackoverflow_searcher:
+                self._check_stop()
+                logger.info("[Phase 1e] StackOverflow 搜尋...")
+                so_result = self.stackoverflow_searcher.search(
+                    skills=skills,
+                    location=location_en,
+                )
+                stackoverflow_data = so_result.get('data', [])
+
+            if self.conference_searcher:
+                self._check_stop()
+                logger.info("[Phase 1f] 研討會講者搜尋...")
+                conf_result = self.conference_searcher.search(
+                    skills=skills,
+                    location=location_en,
+                    brave_key=brave_key,
+                )
+                conference_data = conf_result.get('data', [])
 
         # ═══ Phase 1g: 跨平台身份合併 ═══
         self._check_stop()
