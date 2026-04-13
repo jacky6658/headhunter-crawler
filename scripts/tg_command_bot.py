@@ -580,46 +580,116 @@ async def _execute_loop(job_ids, update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/search 或 查人"""
+    """/search 或 查人 — 多源 OSINT 搜尋特定人"""
     if not is_authorized(update):
         return
     text = (update.message.text or "")
-    # 移除指令前綴
     for prefix in ["/search", "查人", "search"]:
         text = text.replace(prefix, "")
     text = text.strip()
     if not text:
-        await send_reply(update, context, "⚠️ 請指定姓名，例如：<code>/search Shinji</code>")
+        await send_reply(update, context, "⚠️ 請指定姓名，例如：\n<code>/search 林柏瑋</code>\n<code>/search David Chen</code>")
         return
 
-    await send_reply(update, context, f"🔍 搜尋: {text}...")
+    await send_reply(update, context, f"🔍 <b>OSINT 搜尋: {text}</b>\n\n搜尋中（本地 DB → GitHub → CakeResume）...")
+
+    import requests as _req
+    lines = [f"<b>🔍 {text} — OSINT 搜尋結果</b>\n"]
+    found_anything = False
+
+    # ── 1. 本地 DB 搜尋 ──
     try:
-        data = await api_get_async(f"/api/crawler/pipeline/search?q={text}&limit=5")
+        r = _req.get("http://localhost:5001/api/candidates/search",
+                     params={'q': text, 'limit': 5}, timeout=5)
+        if r.status_code == 200:
+            db_results = r.json().get('data', [])
+            if db_results:
+                found_anything = True
+                lines.append(f"📦 <b>人才庫: {len(db_results)} 匹配</b>")
+                for c in db_results[:3]:
+                    name = c.get('name', '?')
+                    bio = (c.get('bio') or c.get('title') or '')[:35]
+                    linkedin = c.get('linkedin_url', '')
+                    github = c.get('github_url', '')
+                    cake = c.get('cakeresume_url', '')
+                    email = c.get('email', '')
+                    company = c.get('company', '')
+
+                    lines.append(f"\n  <b>{name}</b>")
+                    if bio: lines.append(f"  {bio}")
+                    if company: lines.append(f"  🏢 {company}")
+                    if email: lines.append(f"  📧 {email}")
+                    if linkedin: lines.append(f"  🔗 {linkedin}")
+                    if github: lines.append(f"  🐙 {github}")
+                    if cake: lines.append(f"  🍰 {cake}")
+                lines.append("")
+    except Exception:
+        pass
+
+    # ── 2. GitHub 搜尋（用英文名字部分） ──
+    try:
+        import re as _re
+        eng_parts = _re.findall(r'[A-Za-z]+', text)
+        search_q = '+'.join(eng_parts[:2]) if eng_parts else text
+        r = _req.get(f"http://localhost:5001/api/health", timeout=2)  # just check server
+
+        # Direct GitHub API search
+        import os
+        gh_headers = {'Accept': 'application/vnd.github.v3+json'}
+        gh_tokens = os.environ.get('GITHUB_TOKENS', '').split(',')
+        if gh_tokens and gh_tokens[0].strip():
+            gh_headers['Authorization'] = f'token {gh_tokens[0].strip()}'
+
+        for q in [search_q, text.replace(' ', '+')]:
+            import urllib.request, json as _json, ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(
+                f'https://api.github.com/search/users?q={q}+location:Taiwan&per_page=3',
+                headers=gh_headers)
+            try:
+                resp = urllib.request.urlopen(req, timeout=8, context=ctx)
+                data = _json.loads(resp.read())
+                if data.get('total_count', 0) > 0:
+                    found_anything = True
+                    lines.append(f"🐙 <b>GitHub 搜尋:</b>")
+                    for u in data['items'][:3]:
+                        login = u.get('login', '')
+                        gh_url = u.get('html_url', '')
+                        gh_name = u.get('name') or login
+                        lines.append(f"  <b>{gh_name}</b> → {gh_url}")
+                    lines.append("")
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # ── 3. Step1ne 系統搜尋 ──
+    try:
+        data = await api_get_async(f"/api/crawler/pipeline/search?q={text}&limit=3")
         items = data.get("data", [])
-        if not items:
-            await send_reply(update, context, f"❌ 找不到: {text}")
-            return
-        lines = [f"<b>🔍 搜尋結果: {text}</b>\n"]
-        for c in items[:5]:
-            cid = c.get("id", "?")
-            name = c.get("name", "?")
-            title = (c.get("current_title") or c.get("current_position") or "")[:40]
-            status = c.get("status", "")
-            score = ""
-            ai = c.get("aiAnalysis")
-            if ai:
-                try:
-                    if isinstance(ai, str):
-                        ai = json.loads(ai)
-                    jm = ai.get("job_matchings", [{}])
-                    if jm:
-                        score = f" | score={jm[0].get('match_score', '?')}"
-                except:
-                    pass
-            lines.append(f"• <b>#{cid}</b> {name}\n  {title}\n  status={status}{score}")
-        await send_reply(update, context, "\n".join(lines))
-    except Exception as e:
-        await send_reply(update, context, f"❌ 搜尋失敗: {e}")
+        if items:
+            found_anything = True
+            lines.append(f"📋 <b>Step1ne 系統: {len(items)} 匹配</b>")
+            for c in items[:3]:
+                cid = c.get("id", "?")
+                name = c.get("name", "?")
+                title = (c.get("current_title") or c.get("current_position") or "")[:40]
+                linkedin = c.get("linkedinUrl") or c.get("linkedin_url") or ""
+                lines.append(f"  <b>{name}</b> — {title}")
+                if linkedin:
+                    lines.append(f"  🔗 {linkedin}")
+    except Exception:
+        pass
+
+    # ── 結果輸出 ──
+    if not found_anything:
+        lines.append(f"❌ 所有來源都找不到「{text}」")
+        lines.append(f"\n💡 建議用「🔍 自由搜尋人才」啟動多源爬蟲搜尋")
+
+    await send_reply(update, context, "\n".join(lines))
 
 
 async def cmd_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
