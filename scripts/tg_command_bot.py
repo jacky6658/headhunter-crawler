@@ -878,16 +878,34 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                         if rr.status_code == 200:
                             new_candidates = rr.json().get('data', [])
 
-                    # 方法 3: 不限等級（公司搜尋 fallback）
+                    # 方法 3: 不限等級
                     if not new_candidates:
                         rr2 = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=D",
                                        timeout=5)
                         new_candidates = rr2.json().get('data', []) if rr2.status_code == 200 else []
 
+                    # 方法 4: 直接讀取全部候選人，用關鍵字模糊搜（公司搜尋 fallback）
+                    if not new_candidates:
+                        try:
+                            rr3 = _req.get(f"http://localhost:5001/api/candidates?client=自由搜尋&limit=100", timeout=5)
+                            if rr3.status_code == 200:
+                                all_c = rr3.json().get('data', [])
+                                # 模糊匹配：bio/company/title 含任一搜尋詞
+                                for c in all_c:
+                                    text = (str(c.get('bio','')) + str(c.get('company','')) +
+                                            str(c.get('title','')) + str(c.get('name',''))).lower()
+                                    if any(s.lower() in text for s in skills):
+                                        new_candidates.append(c)
+                                # 有 email 的優先
+                                new_candidates.sort(key=lambda c: (bool(c.get('email')), c.get('score',0)), reverse=True)
+                                new_candidates = new_candidates[:20]
+                        except Exception:
+                            pass
+
                     lines = [
                         f"✅ <b>多源搜尋完成</b>\n",
                         f"📊 搜尋到 {result_count} 人 (LinkedIn {li_count} + GitHub {gh_count})",
-                        f"🎯 A+B 級本地候選人: {len(new_candidates)} 位\n",
+                        f"🎯 匹配候選人: {len(new_candidates)} 位\n",
                     ]
 
                     if new_candidates:
