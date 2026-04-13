@@ -75,6 +75,9 @@ _pending_custom_angle = {}
 # 自由搜尋等待輸入 {user_id: True}
 _pending_free_search = {}
 
+# 公司定向搜尋等待輸入 {user_id: True}
+_pending_company_search = {}
+
 # 已知的龍蝦 Bot IDs（偵測他們的錯誤訊息）
 LOBSTER_BOT_IDS = {
     8342445243,   # hr-yuqi
@@ -259,6 +262,7 @@ def build_help_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🚀 企業職缺搜尋", callback_data="show_jobs")],
         [InlineKeyboardButton("🔍 自由搜尋人才", callback_data="free_search_prompt")],
+        [InlineKeyboardButton("🏢 公司定向搜尋", callback_data="company_search_prompt")],
         [InlineKeyboardButton("📋 查看搜尋策略", callback_data="show_jobs_profile"),
          InlineKeyboardButton("🧠 AI優化關鍵字", callback_data="show_jobs_optimize")],
         [InlineKeyboardButton("📝 自訂搜尋角度", callback_data="show_jobs_custom_angle")],
@@ -932,6 +936,116 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
         log.error(f"poll_and_notify error: {e}")
 
 
+async def cmd_company_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """處理公司定向搜尋文字輸入"""
+    if not is_authorized(update):
+        return
+
+    text = (update.message.text or '').strip()
+    parts = text.split()
+
+    if len(parts) < 2:
+        await send_reply(update, context,
+            "⚠️ 請輸入公司名 + 職位/技能\n例: <code>三竹資訊 Java</code>")
+        return
+
+    # 第一個詞當公司名（支援中文公司名），剩下當技能
+    # 智慧拆分：中文公司名可能 2-4 個字，英文公司名 1 個詞
+    company = parts[0]
+    skills = parts[1:]
+
+    # 如果前兩個都是中文且像公司名，合併
+    if len(parts) >= 3 and all(any('\u4e00' <= c <= '\u9fff' for c in p) for p in parts[:2]):
+        company = parts[0] + parts[1]
+        skills = parts[2:]
+
+    await send_reply(update, context,
+        f"🏢 <b>公司定向搜尋</b>\n"
+        f"🎯 目標公司: {company}\n"
+        f"🔧 職位/技能: {', '.join(skills)}\n\n"
+        f"1️⃣ 從人才庫搜尋曾在 {company} 的人...\n"
+        f"2️⃣ 同時啟動多源搜尋")
+
+    # 1. DB 搜尋：用公司名 + 技能搜
+    import requests as _req
+    try:
+        all_skills = [company] + skills
+        skills_str = ','.join(all_skills)
+        r = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=10&min_grade=C&local_only=true",
+                     timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            candidates = data.get('data', [])
+
+            # 額外過濾：優先顯示 company/bio/work_history 含公司名的
+            company_lower = company.lower()
+            prioritized = []
+            others = []
+            for c in candidates:
+                c_company = (c.get('company', '') or '').lower()
+                c_bio = (c.get('bio', '') or '').lower()
+                c_wh = str(c.get('work_history', '')).lower()
+                if company_lower in c_company or company_lower in c_bio or company_lower in c_wh:
+                    prioritized.append(c)
+                else:
+                    others.append(c)
+
+            final = prioritized + others
+
+            if final:
+                lines = [f"⚡ <b>人才庫匹配</b> — {len(final)} 位\n"]
+                if prioritized:
+                    lines.append(f"🎯 其中 {len(prioritized)} 位有 {company} 相關經歷\n")
+                for i, c in enumerate(final[:10], 1):
+                    name = c.get('name', '?')
+                    grade = c.get('grade', '?')
+                    score = c.get('score', 0)
+                    bio = (c.get('bio') or c.get('title') or '')[:35]
+                    comp = (c.get('company') or '')[:15]
+                    linkedin = c.get('linkedin_url', '')
+                    github_url = c.get('github_url', '')
+                    cake_url = c.get('cakeresume_url', '')
+                    email = c.get('email', '')
+
+                    is_target = c in prioritized
+                    flag = '🎯' if is_target else ''
+
+                    lines.append(f"{i}. {flag}<b>{name}</b> [{grade}:{score}分]")
+                    if bio:
+                        lines.append(f"   {bio}")
+                    if comp:
+                        lines.append(f"   🏢 {comp}")
+                    if email:
+                        lines.append(f"   📧 {email}")
+                    if linkedin:
+                        lines.append(f"   🔗 {linkedin}")
+                    if github_url:
+                        lines.append(f"   🐙 {github_url}")
+                    if cake_url:
+                        lines.append(f"   🍰 {cake_url}")
+
+                await send_reply(update, context, "\n".join(lines))
+            else:
+                await send_reply(update, context,
+                    f"📭 人才庫中尚無 {company} + {', '.join(skills)} 的候選人")
+    except Exception as e:
+        log.error(f"Company search DB error: {e}")
+
+    # 2. 背景多源搜尋：用多種 query 組合
+    # 把公司名加入搜尋技能，讓 LinkedIn/CakeResume 也能搜到
+    search_skills = skills + [company]
+    job_title = f"{company} {' '.join(skills)}"
+    task_id = await _start_crawler_search(search_skills, job_title, 'Taiwan', update, context)
+
+    if task_id:
+        await send_reply(update, context,
+            f"🚀 多源搜尋已啟動\n"
+            f"🔄 搜尋: \"{company}\" + \"{' '.join(skills)}\"\n"
+            f"📋 任務 ID: <code>{task_id}</code>\n\n"
+            f"⏳ 完成後自動推送結果")
+        asyncio.create_task(_poll_and_notify(task_id, search_skills, update, context))
+
+
 async def _start_multisource_search_for_job(job_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE):
     """路徑 1: 從 Step1ne 職缺取技能 → 建立多源搜尋任務 → 進度追蹤 → 完成通知"""
     import requests as _req
@@ -1057,6 +1171,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>React Senior Frontend</code>\n"
             "<code>DevOps AWS Docker</code>\n\n"
             "系統會同時從人才庫推薦 + 啟動多源搜尋（LinkedIn + GitHub + CakeResume）\n\n"
+            "輸入 <code>取消</code> 取消",
+            parse_mode="HTML"
+        )
+
+    elif data == "company_search_prompt":
+        _pending_company_search[query.from_user.id] = True
+        await query.edit_message_text(
+            "🏢 <b>公司定向搜尋</b>\n\n"
+            "輸入格式: <b>公司名 + 職位/技能</b>\n\n"
+            "範例：\n"
+            "<code>三竹資訊 Java</code>\n"
+            "<code>精誠資訊 後端工程師</code>\n"
+            "<code>Appier Golang Backend</code>\n"
+            "<code>Dcard React Frontend</code>\n\n"
+            "系統會用多種 query 組合搜尋曾在該公司任職的人\n\n"
             "輸入 <code>取消</code> 取消",
             parse_mode="HTML"
         )
@@ -1802,6 +1931,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── 人類指令 ──
     if not is_authorized(update):
+        return
+
+    # 檢查是否在等公司定向搜尋輸入
+    if update.effective_user and update.effective_user.id in _pending_company_search:
+        del _pending_company_search[update.effective_user.id]
+        if text == '取消':
+            await send_reply(update, context, "✅ 已取消")
+            return
+        await cmd_company_search_text(update, context)
         return
 
     # 檢查是否在等自由搜尋輸入
