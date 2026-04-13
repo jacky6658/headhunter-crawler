@@ -314,6 +314,52 @@ class SearchEngine:
             else:
                 logger.info("[Phase 2] 跳過 (無候選人)")
 
+        # ═══ Phase 2.5: Email 猜測 + Cache 讀取 ═══
+        self._check_stop()
+        try:
+            from crawler.email_guesser import enrich_candidate_emails
+            from crawler.cache_reader import read_linkedin_cache
+            email_guessed = 0
+            cache_enriched = 0
+
+            for c in candidates:
+                # Email 猜測：沒有 email 的候選人，用 name + company 推算
+                if not c.email and (c.company or c.bio):
+                    c_dict = c.to_dict() if hasattr(c, 'to_dict') else {}
+                    guessed = enrich_candidate_emails(c_dict)
+                    if guessed:
+                        c.email = guessed[0]['email']
+                        if not c.contact_methods:
+                            c.contact_methods = []
+                        for g in guessed:
+                            c.contact_methods.append({
+                                'type': 'email_guessed',
+                                'value': g['email'],
+                                'source': f"pattern:{g['pattern']}@{g['domain']}",
+                                'confidence': g['confidence'],
+                            })
+                        email_guessed += 1
+
+                # Cache 讀取：LinkedIn enrichment 失敗的，嘗試從快取讀
+                if c.linkedin_url and not c.skills and c.enrichment_source in ('failed', ''):
+                    cached = read_linkedin_cache(c.linkedin_url, self.ad)
+                    if cached and cached.get('skills'):
+                        if not c.title and cached.get('title'):
+                            c.title = cached['title']
+                        if not c.company and cached.get('company'):
+                            c.company = cached['company']
+                        if cached.get('skills'):
+                            c.skills = cached['skills']
+                        if cached.get('bio') and not c.bio:
+                            c.bio = cached['bio']
+                        c.enrichment_source = cached.get('_cache_source', 'cache')
+                        cache_enriched += 1
+
+            if email_guessed or cache_enriched:
+                logger.info(f"[Phase 2.5] Email 猜測: {email_guessed} 位 | Cache 補充: {cache_enriched} 位")
+        except Exception as e:
+            logger.warning(f"Phase 2.5 失敗: {e}")
+
         # ═══ Phase 3: 規則式關鍵字評分 + match_tags ═══
         self._check_stop()
         logger.info("[Phase 3] 規則式關鍵字評分 + match_tags 生成...")
