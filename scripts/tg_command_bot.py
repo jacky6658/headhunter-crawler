@@ -705,8 +705,8 @@ async def _instant_recommend(skills: list, update: Update, context: ContextTypes
     import requests as _req
     try:
         skills_str = ','.join(skills)
-        r = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=10&min_grade=B",
-                     timeout=5)
+        r = _req.get("http://localhost:5001/api/candidates/recommend",
+                     params={'skills': skills_str, 'limit': 10, 'min_grade': 'B'}, timeout=5)
         if r.status_code != 200:
             return
 
@@ -865,41 +865,27 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     skills_str = ','.join(skills)
                     new_candidates = []
 
-                    # 方法 1: 精確技能匹配 (B+ 級)
-                    rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=B",
-                                  timeout=5)
-                    if rr.status_code == 200:
-                        new_candidates = rr.json().get('data', [])
+                    # 方法 1-3: 精確技能匹配，逐級放寬
+                    for min_g in ['B', 'C', 'D']:
+                        if new_candidates:
+                            break
+                        try:
+                            rr = _req.get("http://localhost:5001/api/candidates/recommend",
+                                          params={'skills': skills_str, 'limit': 20, 'min_grade': min_g},
+                                          timeout=5)
+                            if rr.status_code == 200:
+                                new_candidates = rr.json().get('data', [])
+                        except Exception:
+                            pass
 
-                    # 方法 2: 放寬到 C 級
-                    if not new_candidates:
-                        rr = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=C",
-                                      timeout=5)
-                        if rr.status_code == 200:
-                            new_candidates = rr.json().get('data', [])
-
-                    # 方法 3: 不限等級
-                    if not new_candidates:
-                        rr2 = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=20&min_grade=D",
-                                       timeout=5)
-                        new_candidates = rr2.json().get('data', []) if rr2.status_code == 200 else []
-
-                    # 方法 4: 直接讀取全部候選人，用關鍵字模糊搜（公司搜尋 fallback）
+                    # 方法 4: 模糊搜尋 API（搜全部候選人的 bio/company/name）
                     if not new_candidates:
                         try:
-                            rr3 = _req.get("http://localhost:5001/api/candidates",
-                                          params={'client': '自由搜尋', 'limit': 100}, timeout=5)
+                            q = ' '.join(skills)
+                            rr3 = _req.get("http://localhost:5001/api/candidates/search",
+                                          params={'q': q, 'limit': 20}, timeout=5)
                             if rr3.status_code == 200:
-                                all_c = rr3.json().get('data', [])
-                                # 模糊匹配：bio/company/title 含任一搜尋詞
-                                for c in all_c:
-                                    text = (str(c.get('bio','')) + str(c.get('company','')) +
-                                            str(c.get('title','')) + str(c.get('name',''))).lower()
-                                    if any(s.lower() in text for s in skills):
-                                        new_candidates.append(c)
-                                # 有 email 的優先
-                                new_candidates.sort(key=lambda c: (bool(c.get('email')), c.get('score',0)), reverse=True)
-                                new_candidates = new_candidates[:20]
+                                new_candidates = rr3.json().get('data', [])
                         except Exception:
                             pass
 
@@ -1005,15 +991,24 @@ async def cmd_company_search_text(update: Update, context: ContextTypes.DEFAULT_
     # 1. DB 搜尋：用公司名 + 技能搜
     import requests as _req
     try:
-        all_skills = [company] + skills
-        skills_str = ','.join(all_skills)
-        r = _req.get(f"http://localhost:5001/api/candidates/recommend?skills={skills_str}&limit=10&min_grade=C&local_only=true",
-                     timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            candidates = data.get('data', [])
+        # 先用模糊搜尋 API（更適合公司定向搜尋）
+        q = f"{company} {' '.join(skills)}"
+        r = _req.get("http://localhost:5001/api/candidates/search",
+                     params={'q': q, 'limit': 20}, timeout=5)
+        candidates = r.json().get('data', []) if r.status_code == 200 else []
 
-            # 額外過濾：優先顯示 company/bio/work_history 含公司名的
+        # Fallback: recommend API
+        if not candidates:
+            all_skills = [company] + skills
+            skills_str = ','.join(all_skills)
+            r = _req.get("http://localhost:5001/api/candidates/recommend",
+                         params={'skills': skills_str, 'limit': 10, 'min_grade': 'D', 'local_only': 'true'},
+                         timeout=5)
+            if r.status_code == 200:
+                candidates = r.json().get('data', [])
+
+        if candidates:
+            # 優先顯示 company/bio/work_history 含公司名的
             company_lower = company.lower()
             prioritized = []
             others = []

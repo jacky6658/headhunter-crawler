@@ -229,6 +229,62 @@ def recommend_candidates():
     })
 
 
+@api_bp.route('/candidates/search')
+def search_candidates():
+    """
+    模糊搜尋 API — 從全部候選人中搜尋 bio/company/name/skills 含關鍵字的人
+
+    Query params:
+      q: 搜尋關鍵字（空格分隔，OR 邏輯）
+      limit: 最多回傳幾筆 (default: 20)
+    """
+    store = _get_sheets_store()
+    if not store:
+        return jsonify({'error': '資料儲存未初始化'}), 503
+
+    query = request.args.get('q', '').strip()
+    limit = int(request.args.get('limit', 20))
+
+    if not query:
+        return jsonify({'data': [], 'total': 0})
+
+    keywords = [k.strip().lower() for k in query.split() if k.strip()]
+
+    results = []
+    seen_keys = set()
+    for client in store.list_clients():
+        for c in store.read_candidates(client_name=client, limit=9999).get('data', []):
+            # 去重
+            dedup_key = (
+                (c.get('linkedin_url') or '').lower().rstrip('/') or
+                (c.get('github_username') or '').lower() or
+                (c.get('name') or '').strip().lower()
+            )
+            if dedup_key and dedup_key in seen_keys:
+                continue
+            if dedup_key:
+                seen_keys.add(dedup_key)
+
+            # 模糊匹配
+            text = ' '.join([
+                str(c.get('name', '')),
+                str(c.get('bio', '')),
+                str(c.get('title', '')),
+                str(c.get('company', '')),
+                str(c.get('skills', '')),
+                str(c.get('work_history', '')),
+            ]).lower()
+
+            if any(kw in text for kw in keywords):
+                c['client_name'] = client
+                results.append(c)
+
+    # 排序：有 email 優先，再按 score
+    results.sort(key=lambda c: (bool(c.get('email')), c.get('score', 0)), reverse=True)
+
+    return jsonify({'data': results[:limit], 'total': len(results)})
+
+
 @api_bp.route('/candidates/export', methods=['POST'])
 def export_candidates():
     store = _get_sheets_store()
