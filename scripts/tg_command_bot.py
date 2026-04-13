@@ -887,7 +887,8 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     # 方法 4: 直接讀取全部候選人，用關鍵字模糊搜（公司搜尋 fallback）
                     if not new_candidates:
                         try:
-                            rr3 = _req.get(f"http://localhost:5001/api/candidates?client=自由搜尋&limit=100", timeout=5)
+                            rr3 = _req.get("http://localhost:5001/api/candidates",
+                                          params={'client': '自由搜尋', 'limit': 100}, timeout=5)
                             if rr3.status_code == 200:
                                 all_c = rr3.json().get('data', [])
                                 # 模糊匹配：bio/company/title 含任一搜尋詞
