@@ -97,7 +97,10 @@ ERROR_KEYWORDS = [
 def is_authorized(update: Update) -> bool:
     chat_id = update.effective_chat.id if update.effective_chat else 0
     user_id = str(update.effective_user.id) if update.effective_user else ""
-    return chat_id == ALLOWED_CHAT_ID or user_id in ALLOWED_USERS
+    # 群組：只允許指定群組
+    # 私訊：所有人都能用
+    is_private = update.effective_chat and update.effective_chat.type == 'private'
+    return is_private or chat_id == ALLOWED_CHAT_ID or user_id in ALLOWED_USERS
 
 
 def parse_job_ids(text: str) -> list:
