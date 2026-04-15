@@ -1408,19 +1408,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "free_search_prompt":
         _pending_free_search[query.from_user.id] = True
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_free_search")],
+            [InlineKeyboardButton("« 返回主選單", callback_data="help")],
+        ])
         await query.edit_message_text(
             "🔍 <b>自由搜尋人才</b>\n\n"
             "請輸入職缺名稱和/或技能關鍵字，例如：\n"
             "<code>Golang 後端工程師 Kubernetes</code>\n"
             "<code>React Senior Frontend</code>\n"
             "<code>DevOps AWS Docker</code>\n\n"
-            "系統會同時從人才庫推薦 + 啟動多源搜尋（LinkedIn + GitHub + CakeResume）\n\n"
-            "輸入 <code>取消</code> 取消",
-            parse_mode="HTML"
+            "系統會同時從人才庫推薦 + 啟動多源搜尋（LinkedIn + GitHub + CakeResume）",
+            parse_mode="HTML",
+            reply_markup=cancel_kb,
         )
+
+    elif data == "cancel_free_search":
+        _pending_free_search.pop(query.from_user.id, None)
+        await query.edit_message_text("✅ 已取消", parse_mode="HTML")
 
     elif data == "browse_db_prompt":
         _pending_browse_db[query.from_user.id] = True
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_browse")],
+            [InlineKeyboardButton("« 返回主選單", callback_data="help")],
+        ])
         await query.edit_message_text(
             "📚 <b>瀏覽人才庫</b>\n\n"
             "輸入關鍵字瀏覽人才庫，可搜尋:\n"
@@ -1428,13 +1440,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• 公司: <code>精誠資訊</code>\n"
             "• 姓名: <code>林柏瑋</code>\n"
             "• 職位: <code>後端工程師</code>\n\n"
-            "只從已爬過的人才庫搜，不啟動新爬蟲（快速）\n\n"
-            "輸入 <code>取消</code> 取消",
-            parse_mode="HTML"
+            "只從已爬過的人才庫搜，不啟動新爬蟲（快速）",
+            parse_mode="HTML",
+            reply_markup=cancel_kb,
         )
+
+    elif data == "cancel_browse":
+        _pending_browse_db.pop(query.from_user.id, None)
+        await query.edit_message_text("✅ 已取消", parse_mode="HTML")
 
     elif data == "company_search_prompt":
         _pending_company_search[query.from_user.id] = True
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="cancel_company_search")],
+            [InlineKeyboardButton("« 返回主選單", callback_data="help")],
+        ])
         await query.edit_message_text(
             "🏢 <b>公司定向搜尋</b>\n\n"
             "輸入格式: <b>公司名 + 職位/技能</b>\n\n"
@@ -1443,10 +1463,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>精誠資訊 後端工程師</code>\n"
             "<code>Appier Golang Backend</code>\n"
             "<code>Dcard React Frontend</code>\n\n"
-            "系統會用多種 query 組合搜尋曾在該公司任職的人\n\n"
-            "輸入 <code>取消</code> 取消",
-            parse_mode="HTML"
+            "系統會用多種 query 組合搜尋曾在該公司任職的人",
+            parse_mode="HTML",
+            reply_markup=cancel_kb,
         )
+
+    elif data == "cancel_company_search":
+        _pending_company_search.pop(query.from_user.id, None)
+        await query.edit_message_text("✅ 已取消", parse_mode="HTML")
 
     elif data == "db_stats":
         import requests as _req
@@ -1534,14 +1558,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         job = db_get_job(jid)
         pos = job.get("position_name", "") if job else ""
         current_skills = job.get("key_skills", "") if job else ""
+        cancel_kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data=f"canceledit_{jid}")],
+            [InlineKeyboardButton("« 返回職缺資訊", callback_data=f"loop_{jid}")],
+        ])
         await query.edit_message_text(
             f"✏️ <b>修改 #{jid} {pos} 的搜尋關鍵字</b>\n\n"
             f"🔧 目前關鍵字:\n<code>{current_skills}</code>\n\n"
             f"請輸入新的關鍵字（空格或逗號分隔）:\n"
-            f"例: <code>Java Spring Boot Backend</code>\n\n"
-            f"輸入 <code>取消</code> 取消",
-            parse_mode="HTML"
+            f"例: <code>Java Spring Boot Backend</code>",
+            parse_mode="HTML",
+            reply_markup=cancel_kb,
         )
+
+    elif data.startswith("canceledit_"):
+        jid = int(data.replace("canceledit_", ""))
+        _pending_edit_keywords.pop(query.from_user.id, None)
+        await query.edit_message_text("✅ 已取消修改關鍵字", parse_mode="HTML")
 
     elif data.startswith("fb_"):
         await _handle_feedback_callback(query, context)
