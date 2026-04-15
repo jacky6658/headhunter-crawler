@@ -934,21 +934,31 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     li_count = status.get('linkedin_count', 0)
                     gh_count = status.get('github_count', 0)
 
-                    # 關鍵：只取「這次任務新找到的人」(按 task_id 過濾)
+                    # 關鍵：只取「這次任務新找到的人」(按 task_id 過濾，排除重複)
                     new_candidates = []
+                    dup_count = 0
                     try:
                         rr = _req.get(f"http://localhost:5001/api/candidates/by-task/{task_id}",
-                                      params={'limit': 20, 'sort_by': 'has_email'}, timeout=5)
+                                      params={'limit': 20, 'sort_by': 'has_email', 'only_new': 'true'},
+                                      timeout=5)
                         if rr.status_code == 200:
-                            new_candidates = rr.json().get('data', [])
+                            body = rr.json()
+                            new_candidates = body.get('data', [])
+                            dup_count = body.get('duplicates_filtered', 0)
                     except Exception:
                         pass
 
                     lines = [
                         f"✅ <b>多源搜尋完成</b>\n",
                         f"📊 搜尋到 {result_count} 人 (LinkedIn {li_count} + GitHub {gh_count})",
+                        f"♻️ 已在人才庫中: {dup_count} 位 (跳過)",
                         f"🆕 本次新找到: {len(new_candidates)} 位\n",
                     ]
+
+                    # 如果沒有新的人，提示使用者
+                    if not new_candidates and dup_count > 0:
+                        lines.append(f"💡 本次爬到的 {dup_count} 人都已在人才庫中（即時推薦已顯示）")
+                        lines.append(f"   建議換不同關鍵字或公司名試試")
 
                     if new_candidates:
                         lines.append("<b>🏆 本次新結果:</b>")

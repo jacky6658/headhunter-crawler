@@ -237,6 +237,7 @@ def candidates_by_task(task_id):
     Query params:
       limit: 最多回傳幾筆 (default: 20)
       sort_by: 排序 ('score' | 'grade' | 'has_email', default: 'score')
+      only_new: 只顯示非重複的新候選人 (default: true)
     """
     store = _get_sheets_store()
     if not store:
@@ -244,11 +245,17 @@ def candidates_by_task(task_id):
 
     limit = int(request.args.get('limit', 20))
     sort_by = request.args.get('sort_by', 'score')
+    only_new = request.args.get('only_new', 'true').lower() != 'false'
 
     results = []
+    dup_count = 0
     for client in store.list_clients():
         for c in store.read_candidates(client_name=client, limit=9999).get('data', []):
             if c.get('task_id') == task_id:
+                # 過濾重複：只要本次新找到的
+                if only_new and c.get('is_duplicate'):
+                    dup_count += 1
+                    continue
                 c['client_name'] = client
                 results.append(c)
 
@@ -261,7 +268,11 @@ def candidates_by_task(task_id):
     else:  # score
         results.sort(key=lambda c: c.get('score', 0), reverse=True)
 
-    return jsonify({'data': results[:limit], 'total': len(results)})
+    return jsonify({
+        'data': results[:limit],
+        'total': len(results),
+        'duplicates_filtered': dup_count,
+    })
 
 
 @api_bp.route('/candidates/search')
