@@ -229,6 +229,41 @@ def recommend_candidates():
     })
 
 
+@api_bp.route('/candidates/by-task/<task_id>')
+def candidates_by_task(task_id):
+    """
+    按 task_id 篩選候選人 — 只回傳這次搜尋新找到的人
+
+    Query params:
+      limit: 最多回傳幾筆 (default: 20)
+      sort_by: 排序 ('score' | 'grade' | 'has_email', default: 'score')
+    """
+    store = _get_sheets_store()
+    if not store:
+        return jsonify({'error': '資料儲存未初始化'}), 503
+
+    limit = int(request.args.get('limit', 20))
+    sort_by = request.args.get('sort_by', 'score')
+
+    results = []
+    for client in store.list_clients():
+        for c in store.read_candidates(client_name=client, limit=9999).get('data', []):
+            if c.get('task_id') == task_id:
+                c['client_name'] = client
+                results.append(c)
+
+    # 排序
+    if sort_by == 'has_email':
+        results.sort(key=lambda c: (bool(c.get('email')), c.get('score', 0)), reverse=True)
+    elif sort_by == 'grade':
+        grade_order = {'A': 4, 'B': 3, 'C': 2, 'D': 1, '': 0}
+        results.sort(key=lambda c: (grade_order.get(c.get('grade', ''), 0), c.get('score', 0)), reverse=True)
+    else:  # score
+        results.sort(key=lambda c: c.get('score', 0), reverse=True)
+
+    return jsonify({'data': results[:limit], 'total': len(results)})
+
+
 @api_bp.route('/candidates/search')
 def search_candidates():
     """

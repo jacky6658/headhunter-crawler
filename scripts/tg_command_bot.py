@@ -934,42 +934,24 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
                     li_count = status.get('linkedin_count', 0)
                     gh_count = status.get('github_count', 0)
 
-                    # 從 DB 拿結果 — 用多種方式搜
-                    skills_str = ','.join(skills)
+                    # 關鍵：只取「這次任務新找到的人」(按 task_id 過濾)
                     new_candidates = []
-
-                    # 方法 1-3: 精確技能匹配，逐級放寬
-                    for min_g in ['B', 'C', 'D']:
-                        if new_candidates:
-                            break
-                        try:
-                            rr = _req.get("http://localhost:5001/api/candidates/recommend",
-                                          params={'skills': skills_str, 'limit': 20, 'min_grade': min_g},
-                                          timeout=5)
-                            if rr.status_code == 200:
-                                new_candidates = rr.json().get('data', [])
-                        except Exception:
-                            pass
-
-                    # 方法 4: 模糊搜尋 API（搜全部候選人的 bio/company/name）
-                    if not new_candidates:
-                        try:
-                            q = ' '.join(skills)
-                            rr3 = _req.get("http://localhost:5001/api/candidates/search",
-                                          params={'q': q, 'limit': 20}, timeout=5)
-                            if rr3.status_code == 200:
-                                new_candidates = rr3.json().get('data', [])
-                        except Exception:
-                            pass
+                    try:
+                        rr = _req.get(f"http://localhost:5001/api/candidates/by-task/{task_id}",
+                                      params={'limit': 20, 'sort_by': 'has_email'}, timeout=5)
+                        if rr.status_code == 200:
+                            new_candidates = rr.json().get('data', [])
+                    except Exception:
+                        pass
 
                     lines = [
                         f"✅ <b>多源搜尋完成</b>\n",
                         f"📊 搜尋到 {result_count} 人 (LinkedIn {li_count} + GitHub {gh_count})",
-                        f"🎯 匹配候選人: {len(new_candidates)} 位\n",
+                        f"🆕 本次新找到: {len(new_candidates)} 位\n",
                     ]
 
                     if new_candidates:
-                        lines.append("<b>🏆 推薦名單:</b>")
+                        lines.append("<b>🏆 本次新結果:</b>")
                         for i, c in enumerate(new_candidates[:10], 1):
                             name = c.get('name', '?')
                             grade = c.get('grade', '?')
