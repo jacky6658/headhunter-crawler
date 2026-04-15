@@ -78,6 +78,9 @@ _pending_free_search = {}
 # 公司定向搜尋等待輸入 {user_id: True}
 _pending_company_search = {}
 
+# 瀏覽人才庫等待輸入 {user_id: True}
+_pending_browse_db = {}
+
 # 已知的龍蝦 Bot IDs（偵測他們的錯誤訊息）
 LOBSTER_BOT_IDS = {
     8342445243,   # hr-yuqi
@@ -266,6 +269,7 @@ def build_help_keyboard():
         [InlineKeyboardButton("🚀 企業職缺搜尋", callback_data="show_jobs")],
         [InlineKeyboardButton("🔍 自由搜尋人才", callback_data="free_search_prompt")],
         [InlineKeyboardButton("🏢 公司定向搜尋", callback_data="company_search_prompt")],
+        [InlineKeyboardButton("📚 瀏覽人才庫", callback_data="browse_db_prompt")],
         [InlineKeyboardButton("📋 查看搜尋策略", callback_data="show_jobs_profile"),
          InlineKeyboardButton("🧠 AI優化關鍵字", callback_data="show_jobs_optimize")],
         [InlineKeyboardButton("📝 自訂搜尋角度", callback_data="show_jobs_custom_angle")],
@@ -839,9 +843,22 @@ async def _instant_recommend(skills: list, update: Update, context: ContextTypes
 
 
 async def _start_crawler_search(skills: list, job_title: str, location: str,
-                                  update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """背景啟動多源爬蟲搜尋"""
+                                  update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                  pages: int = 3, start_page: int = None):
+    """
+    背景啟動多源爬蟲搜尋
+
+    Args:
+        pages: 搜尋頁數 (預設 3，擴大範圍)
+        start_page: 從第幾頁開始（隨機化，每次爬不同範圍）
+    """
     import requests as _req
+    import random
+
+    # 隨機化 start_page — 每次從不同頁數開始，降低撈到相同人的機率
+    if start_page is None:
+        start_page = random.randint(0, 5)
+
     try:
         payload = {
             'job_title': job_title or ' '.join(skills),
@@ -849,7 +866,8 @@ async def _start_crawler_search(skills: list, job_title: str, location: str,
             'secondary_skills': skills[3:],
             'location': location,
             'location_zh': '台灣' if 'taiwan' in location.lower() else location,
-            'pages': 1,
+            'pages': pages,
+            'start_page': start_page,
             'client_name': '自由搜尋',
             'schedule_type': 'once',
         }
@@ -1021,6 +1039,71 @@ async def _poll_and_notify(task_id: str, skills: list, update: Update, context: 
 
     except Exception as e:
         log.error(f"poll_and_notify error: {e}")
+
+
+async def cmd_browse_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """瀏覽人才庫 — 只從 DB 搜尋，不啟動爬蟲（快速）"""
+    if not is_authorized(update):
+        return
+
+    text = (update.message.text or '').strip()
+    if not text:
+        return
+
+    import requests as _req
+    try:
+        r = _req.get("http://localhost:5001/api/candidates/search",
+                     params={'q': text, 'limit': 15}, timeout=5)
+        if r.status_code != 200:
+            await send_reply(update, context, "❌ 搜尋失敗")
+            return
+
+        data = r.json()
+        candidates = data.get('data', [])
+        total = data.get('total', 0)
+
+        if not candidates:
+            await send_reply(update, context,
+                f"📭 人才庫中找不到「{text}」\n\n💡 試試「🔍 自由搜尋人才」啟動爬蟲去找")
+            return
+
+        lines = [f"📚 <b>人才庫搜尋: {text}</b>\n{total} 人匹配，顯示前 {min(15, total)} 位\n"]
+
+        for i, c in enumerate(candidates[:15], 1):
+            name = c.get('name', '?')
+            grade = c.get('grade', '?')
+            score = c.get('score', 0)
+            bio = (c.get('bio') or c.get('title') or '')[:40]
+            company = (c.get('company') or '')[:15]
+            linkedin = c.get('linkedin_url', '')
+            github_url = c.get('github_url', '')
+            cake_url = c.get('cakeresume_url', '')
+            email = c.get('email', '')
+
+            contacts = []
+            if email: contacts.append('📧')
+            if linkedin: contacts.append('🔗')
+            if github_url: contacts.append('🐙')
+            if cake_url: contacts.append('🍰')
+            flag = ' '.join(contacts) if contacts else '❌無聯繫'
+
+            lines.append(f"\n{i}. <b>{name}</b> [{grade}:{score}分] {flag}")
+            if bio:
+                lines.append(f"   {bio}")
+            if company:
+                lines.append(f"   🏢 {company}")
+            if email:
+                lines.append(f"   📧 {email}")
+            if linkedin:
+                lines.append(f"   🔗 {linkedin}")
+            if github_url:
+                lines.append(f"   🐙 {github_url}")
+            if cake_url:
+                lines.append(f"   🍰 {cake_url}")
+
+        await send_reply(update, context, "\n".join(lines))
+    except Exception as e:
+        await send_reply(update, context, f"❌ 錯誤: {e}")
 
 
 async def cmd_company_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1267,6 +1350,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<code>React Senior Frontend</code>\n"
             "<code>DevOps AWS Docker</code>\n\n"
             "系統會同時從人才庫推薦 + 啟動多源搜尋（LinkedIn + GitHub + CakeResume）\n\n"
+            "輸入 <code>取消</code> 取消",
+            parse_mode="HTML"
+        )
+
+    elif data == "browse_db_prompt":
+        _pending_browse_db[query.from_user.id] = True
+        await query.edit_message_text(
+            "📚 <b>瀏覽人才庫</b>\n\n"
+            "輸入關鍵字瀏覽人才庫，可搜尋:\n"
+            "• 技能: <code>Golang Kubernetes</code>\n"
+            "• 公司: <code>精誠資訊</code>\n"
+            "• 姓名: <code>林柏瑋</code>\n"
+            "• 職位: <code>後端工程師</code>\n\n"
+            "只從已爬過的人才庫搜，不啟動新爬蟲（快速）\n\n"
             "輸入 <code>取消</code> 取消",
             parse_mode="HTML"
         )
@@ -2027,6 +2124,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── 人類指令 ──
     if not is_authorized(update):
+        return
+
+    # 檢查是否在等瀏覽人才庫輸入
+    if update.effective_user and update.effective_user.id in _pending_browse_db:
+        del _pending_browse_db[update.effective_user.id]
+        if text == '取消':
+            await send_reply(update, context, "✅ 已取消")
+            return
+        await cmd_browse_db(update, context)
         return
 
     # 檢查是否在等公司定向搜尋輸入
