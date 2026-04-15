@@ -81,6 +81,9 @@ _pending_company_search = {}
 # 瀏覽人才庫等待輸入 {user_id: True}
 _pending_browse_db = {}
 
+# 修改職缺關鍵字等待輸入 {user_id: job_id}
+_pending_edit_keywords = {}
+
 # 已知的龍蝦 Bot IDs（偵測他們的錯誤訊息）
 LOBSTER_BOT_IDS = {
     8342445243,   # hr-yuqi
@@ -270,12 +273,8 @@ def build_help_keyboard():
         [InlineKeyboardButton("🔍 自由搜尋人才", callback_data="free_search_prompt")],
         [InlineKeyboardButton("🏢 公司定向搜尋", callback_data="company_search_prompt")],
         [InlineKeyboardButton("📚 瀏覽人才庫", callback_data="browse_db_prompt")],
-        [InlineKeyboardButton("📋 查看搜尋策略", callback_data="show_jobs_profile"),
-         InlineKeyboardButton("🧠 AI優化關鍵字", callback_data="show_jobs_optimize")],
-        [InlineKeyboardButton("📝 自訂搜尋角度", callback_data="show_jobs_custom_angle")],
         [InlineKeyboardButton("📊 人才庫總覽", callback_data="db_stats"),
          InlineKeyboardButton("🔄 系統狀態", callback_data="status")],
-        [InlineKeyboardButton("🔄 跑全部閉環", callback_data="loop_all")],
     ])
 
 
@@ -1269,6 +1268,72 @@ async def _start_multisource_search_for_job(job_id: int, update: Update, context
         await send_reply(update, context, f"❌ #{job_id} 搜尋任務建立失敗")
 
 
+async def _run_job_with_custom_keywords(job_id: int, keywords_text: str,
+                                          update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """使用自訂關鍵字啟動職缺搜尋"""
+    import re as _re
+    # 解析使用者輸入的關鍵字（空格/逗號分隔）
+    skills = [s.strip() for s in _re.split(r'[,，\s]+', keywords_text) if s.strip()]
+    if not skills:
+        await send_reply(update, context, "⚠️ 無法識別關鍵字")
+        return
+
+    job = db_get_job(job_id)
+    position = job.get("position_name", f"Job #{job_id}") if job else f"Job #{job_id}"
+    location = (job.get("location", "Taiwan") if job else "Taiwan") or "Taiwan"
+
+    await send_reply(update, context,
+        f"✏️ <b>使用自訂關鍵字搜尋</b>\n"
+        f"📋 #{job_id} {position}\n"
+        f"🔧 新關鍵字: {', '.join(skills)}\n\n"
+        f"正在從人才庫查找...")
+
+    # 1. 即時推薦
+    await _instant_recommend(skills, update, context, position)
+
+    # 2. 啟動多源搜尋
+    task_id = await _start_crawler_search(skills, position, location, update, context)
+    if task_id:
+        await send_reply(update, context,
+            f"🚀 多源搜尋已啟動\n"
+            f"📋 任務 ID: <code>{task_id}</code>\n"
+            f"🔄 搜尋: {', '.join(skills)}\n\n"
+            f"⏳ 完成後自動推送結果")
+        asyncio.create_task(_poll_and_notify(task_id, skills, update, context))
+
+
+async def _show_job_preview(job_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """顯示職缺資訊 + 關鍵字，讓使用者選擇直接搜或修改關鍵字"""
+    query = update.callback_query
+    job = db_get_job(job_id)
+    if not job:
+        job = (await api_get_async(f"/api/crawler/pipeline/jobs/{job_id}")).get("data", {})
+
+    if not job:
+        await query.edit_message_text(f"❌ 找不到 #{job_id}")
+        return
+
+    position = job.get("position_name", "?")
+    client = job.get("client_company", "")
+    skills = job.get("key_skills", "") or "(未設定)"
+    location = job.get("location", "") or "Taiwan"
+    salary = job.get("salary_range", "") or ""
+
+    text = f"""📋 <b>#{job_id} {position}</b>
+🏢 {client}
+📍 {location}"""
+    if salary:
+        text += f"\n💰 {salary}"
+    text += f"\n\n🔧 <b>目前搜尋關鍵字:</b>\n<code>{skills}</code>\n\n選擇操作："
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("▶️ 使用預設關鍵字搜尋", callback_data=f"runjob_{job_id}")],
+        [InlineKeyboardButton("✏️ 修改關鍵字後搜尋", callback_data=f"editjob_{job_id}")],
+        [InlineKeyboardButton("« 返回職缺列表", callback_data="show_jobs")],
+    ])
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+
 async def _instant_recommend_for_job(job_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE):
     """路徑 1: 從職缺取技能 → 秒回推薦 + 啟動爬蟲"""
     job = db_get_job(job_id)
@@ -1451,12 +1516,32 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _generate_profile_from_callback(jid, update, context)
 
     elif data.startswith("loop_"):
+        # 選職缺後顯示職缺資訊 + 關鍵字，讓使用者選擇「直接搜」或「修改關鍵字」
         jid = int(data.replace("loop_", ""))
+        await _show_job_preview(jid, update, context)
+
+    elif data.startswith("runjob_"):
+        # 使用預設關鍵字直接搜
+        jid = int(data.replace("runjob_", ""))
         await query.edit_message_text(f"🚀 <b>#{jid} 搜尋啟動中...</b>", parse_mode="HTML")
-        # 路徑 1: 先即時推薦 DB 既有人選（秒回）
         await _instant_recommend_for_job(jid, update, context)
-        # 路徑 2: 啟動新的多源搜尋（不走舊閉環）
         await _start_multisource_search_for_job(jid, update, context)
+
+    elif data.startswith("editjob_"):
+        # 修改關鍵字後再搜
+        jid = int(data.replace("editjob_", ""))
+        _pending_edit_keywords[query.from_user.id] = jid
+        job = db_get_job(jid)
+        pos = job.get("position_name", "") if job else ""
+        current_skills = job.get("key_skills", "") if job else ""
+        await query.edit_message_text(
+            f"✏️ <b>修改 #{jid} {pos} 的搜尋關鍵字</b>\n\n"
+            f"🔧 目前關鍵字:\n<code>{current_skills}</code>\n\n"
+            f"請輸入新的關鍵字（空格或逗號分隔）:\n"
+            f"例: <code>Java Spring Boot Backend</code>\n\n"
+            f"輸入 <code>取消</code> 取消",
+            parse_mode="HTML"
+        )
 
     elif data.startswith("fb_"):
         await _handle_feedback_callback(query, context)
@@ -2124,6 +2209,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── 人類指令 ──
     if not is_authorized(update):
+        return
+
+    # 檢查是否在等修改職缺關鍵字
+    if update.effective_user and update.effective_user.id in _pending_edit_keywords:
+        job_id = _pending_edit_keywords.pop(update.effective_user.id)
+        if text == '取消':
+            await send_reply(update, context, "✅ 已取消")
+            return
+        # 用新關鍵字啟動搜尋
+        await _run_job_with_custom_keywords(job_id, text, update, context)
         return
 
     # 檢查是否在等瀏覽人才庫輸入
